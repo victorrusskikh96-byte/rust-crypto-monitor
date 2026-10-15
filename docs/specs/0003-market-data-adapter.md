@@ -220,3 +220,173 @@ After implementation and cargo fmt --all, cargo test --locked --offline --all-fe
 This milestone verifies orchestration, not the behavior of an actual HTTP stack. Production must select/review reqwest blocking features and transitive dependencies, reuse a client, verify TLS/hostname checks, disable redirects/proxy inheritance/cookies/decompression and all supported protocol retries, implement streaming cap+1 reads (including missing/dishonest Content-Length), map initialization and connection/read failures safely, and enforce configured connect/total deadlines with documented platform limitations. It must preserve status-before-body precedence and never read non-200 bodies. Those remaining AC5/AC6/AC9 portions and full AC10/human closure are not satisfied by fake tests. Ubuntu execution of the changed code remains unverified; old hosted CI evidence applies only to the foundation.
 
 Recommend separately authorized Phase 0.2f production transport work, with deterministic reader/error tests first and no live exchange calls, CLI integration, trading, credentials or automatic retries. No commits, pushes, deployment or changes outside the repository were performed by this milestone.
+
+## Phase 0.2f — Production HTTP transport evidence (2026-10-15)
+
+The human authorized production transport, dependency selection and deterministic offline tests, with no live requests, CLI integration, scheduling, trading, commits or pushes. Recovery found a clean main at checkpoint af007d861839d51a67724ad6f47d584c8dca9958. The four exact baseline gates passed with all 43 existing tests. The accepted ADR and requirements remain unchanged. Overall status remains APPROVED pending complete adapter review and human acceptance.
+
+### Dependency selection and source review
+
+Selected **reqwest =0.13.5**, default-features=false, features=["blocking", "rustls"]. It is the latest release reported by Cargo at selection, with Rust 1.85.0 and MIT OR Apache-2.0 licensing. The current release supplies explicit retry controls and a maintained Rustls backend without extra direct dependencies. No dev dependencies were added. Existing decimal/Serde versions and features remain unchanged.
+
+Cargo fetch resolved 132 additional locked packages, including optional and cross-platform packages. Comparison of package-name/version pairs retained every pre-existing lockfile package/version. The complete metadata graph contains 185 packages and none declares a Rust requirement above 1.99.0. The active Windows graph includes Hyper 1.12.0, hyper-util 0.1.21, Rustls 0.23.46, rustls-platform-verifier 0.7.1, AWS-LC 1.18.2 / aws-lc-sys 0.46.0, and Tokio 1.53.3. Their declared Rust requirements are <=1.85. The active HTTP/TLS feature graph was reviewed using cargo metadata --locked --offline --format-version 1 and cargo tree --locked --offline: no HTTP/2, HTTP/3, cookies, decompression, system-proxy, JSON, form, query or streaming reqwest feature is enabled. A lockfile entry for an optional package such as Quinn is not evidence that HTTP/3 is enabled.
+
+Reviewed selected manifests/licenses: Reqwest MIT OR Apache-2.0; Hyper/hyper-util MIT; Rustls Apache-2.0 OR ISC OR MIT; platform verifier MIT OR Apache-2.0; Tokio MIT. AWS-LC adds native cryptography with ISC/Apache/MIT/BSD license components as listed by aws-lc-sys. Its native build completed successfully on the existing Windows toolchain; no build tools were installed. Tokio's runtime is internal to reqwest blocking; the application owns no runtime and has no direct Tokio dependency. No advisory-database audit or hosted Ubuntu execution was performed in this phase.
+
+Reviewed the selected package source rather than assuming builder methods exist:
+- [Reqwest 0.13.5 manifest](https://github.com/seanmonstar/reqwest/blob/v0.13.5/Cargo.toml) and [blocking builder documentation](https://docs.rs/reqwest/0.13.5/reqwest/blocking/struct.ClientBuilder.html).
+- [Retry policy](https://docs.rs/reqwest/0.13.5/reqwest/retry/fn.never.html) and selected src/retry.rs: never disables protocol-NACK retries as well as application retries.
+- Selected src/async_impl/client.rs forwards pool_max_idle_per_host into Hyper. [hyper-util 0.1.21 legacy client](https://docs.rs/crate/hyper-util/0.1.21/source/src/client/legacy/client.rs) has a separate default retry_canceled_requests path, which reqwest does not expose. Its fresh-connection path does not retry a cancelled send; pool.rs disables the pool when max_idle_per_host=0 and connection_for bypasses pool checkout. Production explicitly disables idle pooling and uses HTTP/1 only, preventing that stale pooled-connection retry path. This reuses the initialized client/runtime, at the cost of a new connection/TLS handshake per fetch. Connection establishment and TCP retransmission remain outside the adapter attempt count.
+- Selected src/blocking/client.rs, src/blocking/request.rs, src/async_impl/client.rs and src/async_impl/body.rs were traced for timeouts. Blocking ClientBuilder::timeout alone is a wait timeout; production also sets RequestBuilder::timeout. That value survives into_async, creates the underlying total timer before sending, and the same timer is moved to the response body's TotalTimeoutBody. It is not recreated for each read. Blocking response reads wrap Reqwest errors in io::ErrorKind::Other; classification checks reqwest::Error::is_timeout and nested I/O timeout errors before generic failures.
+- Selected TLS setup installs the platform verifier with no client authentication when no identity is supplied. Certificate and hostname verification remain enabled, SNI is enabled, and TLS key logging is explicitly disabled.
+
+No unresolved architectural conflict was found. Disabling pooling is an implementation constraint needed for the approved no-retry contract; it does not change the accepted single-client architecture.
+
+### Implementation and configuration
+
+ReqwestTransport::new accepts an already validated TimeoutConfig and initializes one private blocking client without sending a request. Use the same settings when constructing MarketDataAdapter. The connect budget is client-wide, so a request with differing timeouts returns TransportFailure::InvalidConfiguration before request construction/network access; orchestration maps this to the existing InvalidConfiguration domain error. Client construction failure maps to the newly completed ClientInitialization contract with a static message and no retained upstream error. Existing fetch, decimal, normalization and rate-limit behavior is preserved.
+
+The private client builder sets HTTPS-only, HTTP/1-only, Rustls, TLS >=1.2, verified certificates/hostnames, SNI, disabled TLS key logging, redirect Policy::none, referer(false), no_proxy, retry::never, pool_max_idle_per_host(0), no_gzip/no_brotli/no_zstd/no_deflate, and validated connect/request timeouts. Cookies are excluded by features; no cookie store, client identity, default authentication headers, API keys, custom roots or environment credential loading are installed. No externally supplied client or arbitrary destination is exposed.
+
+Each execute builds the fixed HTTPS GET /api/v3/ticker/price with one symbol parameter from typed Pair and one underlying client.execute call. There is no request body. Non-200 status returns without calling the body reader. Only Retry-After on 418/429 is copied; existing orchestration performs the strict integer-seconds parsing and never sleeps/retries. Errors retain only safe typed variants.
+
+For HTTP 200, the shared 16,384-byte limit is applied through Read::take(16_385) before buffering. Reads use a 1,024-byte stack chunk and stop on EOF or the first over-limit byte. Exactly cap bytes are accepted; cap+1 returns ResponseTooLarge without exposing partial data. Content-Length does not control allocation, the application read limit, or termination. Missing, small or enormous declared lengths cannot remove the reader cap. This bounds application-consumed body bytes, not underlying socket buffers or HTTP-parser buffering. HTTP framing is still handled by Reqwest/Hyper; synthetic reader tests do not prove handling of every malformed wire-level Content-Length case.
+
+### TDD and verification
+
+Fourteen deterministic unit tests were written in [transport/tests.rs](../../src/market_data/transport/tests.rs) before production behavior. cargo test --locked --offline --lib first failed compilation for missing transport APIs/helpers and error variants (E0425/E0433/E0599). After contract scaffolding with constant Transport stubs, the same command executed 14 tests: 11 failed and 3 passed. This is the runtime red phase; passing error/partial-failure scaffolding tests are not claimed as red assertions.
+
+After implementation, cargo test --locked --offline --all-features passed 57 tests: 14 transport unit tests, 13 unchanged domain, 15 unchanged fetch, and 15 unchanged normalization tests. No tests are ignored and no tests use sockets, sleeps, live exchange data, credentials or wall-clock assertions. Client/request construction and injected readers are local; no valid production execute is invoked by tests. OS-level network blocking was not configured and is not claimed.
+
+The first mandatory gate sequence stopped at two Clippy collapsible_if findings; both were corrected. The final exact commands all passed:
+- cargo fmt --all -- --check
+- cargo clippy --locked --all-targets --all-features -- -D warnings
+- cargo build --locked --all-targets --all-features
+- cargo test --locked --all-features
+
+Final totals are 57 passed, zero failed/ignored, with zero additional binary unit/doc tests. No warnings remain in the final gates. Lockfile/feature inspection and Git diff checks cover dependency and scope consistency. Existing integration test files, fixtures, CI, toolchain and the empty main remain unchanged.
+
+### Requirements-to-tests traceability
+
+| Requirements / criteria | Tests and review evidence |
+| --- | --- |
+| FR1–FR2 / AC1, AC9 | production_requests_are_fixed_https_get_without_credentials_or_body inspects actual built Reqwest requests for both symbols, URL/method/query, no userinfo/body/auth/cookie/API-key/Accept-Encoding, and the total timeout. Existing invalid-input tests retain zero-attempt coverage. |
+| FR6 / AC5 | request_total_budget_preserves_valid_boundaries checks built request timeouts at nanosecond/equal/max boundaries; actual_builder_keeps_verification_and_configured_connect_budget inspects the real builder's connect budget. Existing domain/fetch tests cover invalid settings and defaults. mismatched_client_timeouts_fail_before_network proves client/request mismatch rejection without sockets. Total timer propagation is source-reviewed, not proven by an elapsed-time assertion. |
+| FR6 / AC5 | successful_streams_accept_empty_and_exact_cap, streaming_oversize_reads_only_cap_plus_one, absent_or_dishonest_content_length_cannot_control_read_bound use generated incremental readers with chunk sizes 1/37/unbounded and absent/dishonest lengths; assert exactly cap+1 bytes consumed on oversize. |
+| FR7 / AC6 | non_200_status_does_not_read_body_even_with_dishonest_length uses a panic-on-read reader across success-like non-200, redirect, client, rate-limit and server statuses. Existing fetch tests prove status classification/precedence. |
+| FR7 / AC6 | stream_timeouts_are_distinguished_from_other_read_failures covers TimedOut, ConnectionReset, UnexpectedEof and Other. wrapped_timeout_is_classified_before_generic_io_failure checks nested timeout precedence. read_failure_discards_partial_success_body proves no partial response escapes. Reqwest connection/body timeout propagation was source-reviewed; no real DNS/TLS/read elapsed timing was exercised. |
+| FR7 / AC6 | client_initialization_error_is_static_and_payload_free injects an invalid builder header into the same private initialization helper; transport_failure_formatting_retains_no_upstream_error checks sanitized failures. Existing fetch formatting tests remain unchanged. |
+| FR8 / AC7 | retry_after_bytes_are_preserved_for_existing_orchestrator covers 0, 120, invalid/date values and absent metadata; existing fetch tests retain strict parsing, no fallback/retry and zero-delay handling. retry::never, HTTP/1-only and disabled pooling are source-reviewed configuration guarantees, not simulated network retry tests. |
+| NFR1, NFR3 / AC9 | actual_builder_keeps_verification_and_configured_connect_budget checks real builder Debug fields for HTTP/1, redirect policy, SNI, disabled key logging, connect budget and no verification bypass/proxy/cookie store. Builder Debug does not expose every internal setting: HTTPS-only, no_proxy's auto-discovery flag, retry policy, pooling, decompression and TLS backend/verifier are also reviewed directly against the selected source and active features. No TLS handshake, redirect server or proxy server is required by tests. |
+| FR3–FR5 / AC2–AC4 | All 28 existing domain/normalization tests and all 15 existing fetch tests pass unchanged; no float conversion, default-price fallback, clock semantics or normalization precedence changed. |
+| FR9, NFR2 / AC8, AC10 | Complete fixture suite is deterministic and offline-capable; all four local Windows gates pass. OS-level isolation, hosted Ubuntu verification and human closure remain unverified/pending. |
+
+### Limitations and next review
+
+No live Binance connectivity, current pair listing, regional availability, DNS/TLS handshake, proxy/redirect server interaction or real elapsed-time deadline behavior is claimed. Platform trust stores and resolver behavior remain operational dependencies; configured deadlines are not hard real-time wall-clock guarantees. Offline tests prove request construction, reader bounds and error mapping; selected-source/configuration review supports the TLS/retry/proxy/deadline settings that cannot be observed without a real HTTP stack interaction. AWS-LC introduces a native build dependency; hosted Ubuntu verification of this change is pending separately approved publication.
+
+Recommend the separately authorized final adapter integration review: review all AC1–AC10 evidence and remaining platform limitations, then obtain human acceptance. Main stays empty; CLI, polling, scheduling and trading require separate scope. No commit, push, deployment or live exchange request was performed. Specification 0003 remains APPROVED.
+
+## Phase 0.2g — Final integration review (2026-10-15)
+
+The human authorized review of the complete adapter, narrowly scoped integration tests and necessary evidence updates, without live requests, CLI integration, commits or pushes. Recovery found main at af007d861839d51a67724ad6f47d584c8dca9958, no staged changes, the previously reported Phase 0.2f working-tree changes and its untracked transport tests. All 57 recovered tests were independently rerun with cargo test --locked --offline --all-features and passed. No unrelated files or nested instructions were found. Existing production source and Cargo files were captured by SHA-256 at recovery and remained unchanged during this review.
+
+### Integration gaps and tests
+
+No missing production connection was found. External synchronous callers can create TimeoutConfig, initialize ReqwestTransport with it, supply a Clock, and construct MarketDataAdapter using the same connect/request durations. Both fetch_price(Pair) and fetch_price_str are public. The client, request fields and builder are private, with no arbitrary destination/client injection into production. Invalid settings fail in TimeoutConfig or adapter construction; client/adapter timeout mismatch maps safely to InvalidConfiguration before network access. Client initialization errors expose only ClientInitialization.
+
+Three missing integration assertions were added without changing production behavior:
+- [public_production_adapter_constructs_and_rejects_before_network](../../tests/integration.rs) compiles and executes through the external crate API, constructs the real client/adapter, verifies unsupported pair handling and both typed pairs' mismatch rejection without sending a request or sampling the clock.
+- streaming_pipeline_preserves_both_pair_observations in [transport tests](../../src/market_data/transport/tests.rs) uses the existing HttpTransport seam with the real private production request builder and response collector, replacing only network execution with a reader. BTC/ETH fixtures padded to the exact cap pass through collection, fetch classification and normalization to exact prices, Binance identity and one fixed timestamp. The test asserts the actual Reqwest URL/method/total timeout and one invocation.
+- streaming_pipeline_preserves_failure_precedence_without_observation_or_retry composes generated oversized data, partial-read Timeout/Transport failures, schema/symbol/price errors, 301/503, and 418/429 with valid/zero/date Retry-After through that same pipeline. Non-200 readers panic if read; every failure preserves classification, makes one invocation, samples no clock, and exposes no upstream diagnostic or URL. This is an injected-reader pipeline, not an HTTP wire test.
+
+These regression additions passed the existing implementation; no artificial failing stub or new production behavior was introduced. The first mandatory gate sequence found a Clippy type_complexity warning in the new test table; a local type alias resolved it. Prior domain, normalization and fetch test files/fixtures remain unchanged.
+
+### Critical engineering findings and evidence limits
+
+No blocking code defect or new architectural decision was identified.
+- Verified by tests: public construction, validated settings, actual request mapping, streamed cap/cap+1 behavior independent of supplied length metadata, no application read of non-200 bodies, error precedence/sanitization, exact decimal observations, fixed clock semantics, rate-limit metadata, no stale/default fallback and one fake invocation per accepted fetch.
+- Source/configuration review: the pinned Reqwest 0.13.5 request timeout reaches the async request extensions, starts one total timer and transfers it into TotalTimeoutBody; the blocking per-read wait is not the sole deadline. Reqwest's is_timeout and nested I/O inspection preserve timeout classification. Hyper-util 0.1.21's disabled-pool branch creates a fresh connection, avoids pool checkout and marks it unreused, so its independent stale-connection retry cannot occur. retry::never separately disables Reqwest protocol-NACK retries; HTTP/2/3 are inactive. The active Cargo feature graph and actual client builder retain verified Rustls certificates/hostnames, HTTPS-only, TLS >=1.2, SNI, no key logging, no proxy discovery, no redirects, no cookies/client identity/auth headers, no decompression and validated deadlines.
+- Ownership/threading review: adapter borrows transport mutably and Clock immutably, serializing fetches. Its trait objects do not promise Send/Sync, so callers should construct/use the adapter within the synchronous thread that owns those borrows. Reqwest blocking owns its internal runtime/thread; create, call and drop it outside an async runtime. No application-owned Tokio runtime or worker framework was added.
+- Unverified operational behavior: real DNS/TLS handshakes, certificate rejection, regional availability, actual redirect/proxy interactions, wire-level framing and elapsed slow-body deadlines. The configured timeout is not a hard real-time guarantee. Application-consumed bytes are capped; socket/HTTP-parser buffers remain outside that bound. Disabled pooling adds a new TLS connection per fetch while reusing the client. Windows compilation is verified; hosted Ubuntu execution of the transport remains pending.
+
+No live Binance request is needed for the approved deterministic acceptance tests and none was performed. No advisory database or network-isolation mechanism was installed/configured by this review.
+
+### AC1–AC10 assessment
+
+PASS means the criterion's specified test or inspection evidence is satisfied; it does not imply live-provider validation.
+
+| Criterion | Result | Concrete evidence and remaining condition |
+| --- | --- | --- |
+| AC1 | PASS | streaming_pipeline_preserves_both_pair_observations checks canonical inputs through actual Reqwest GET/host/path/symbol construction; invalid_pair_inputs_never_invoke_transport verifies strict input rejection and zero fake calls. Public construction is separately compiled/executed. |
+| AC2 | PASS | streaming_pipeline_preserves_both_pair_observations checks both complete reader-to-observation fixture paths, exact 65000.12 / 2500.00000001, pair/provider and one fixed timestamp; existing BTC/ETH fetch tests agree. |
+| AC3 | PASS | missing_required_fields_are_invalid, null_and_incorrect_field_types_are_invalid, duplicate_known_fields_are_rejected_even_when_identical_or_escaped, top_level_arrays_and_scalars_are_rejected, malformed_and_trailing_json_are_rejected, invalid_utf8_is_rejected_in_known_and_ignored_fields and additional_unknown_fields_and_trailing_whitespace_are_accepted cover the schema contract. New failure-pipeline assertions preserve schema-before-symbol-before-price precedence with no clock sample. |
+| AC4 | PASS | price_strict_ascii_syntax, price_byte_limit, price_rejects_nonpositive, price_rejects_excess_scale_even_trailing_zeros, price_rejects_coefficient_overflow_without_rounding, price_precision_boundaries and exact_decimal_boundaries_survive_json_normalization cover grammar/precision/coefficient bounds. Numeric JSON prices fail in null_and_incorrect_field_types_are_invalid. Source uses exact Decimal and no price float conversion. |
+| AC5 | PASS | timeout_defaults/timeout_invalid_settings/timeout_valid_boundaries and valid_timeout_boundaries_reach_transport_unchanged cover settings. successful_streams_accept_empty_and_exact_cap, streaming_oversize_reads_only_cap_plus_one and absent_or_dishonest_content_length_cannot_control_read_bound verify the production collector. The new failure pipeline maps a TimedOut read after partial bytes without returning a price. Total-deadline semantics are source-reviewed, as permitted by the specification; real elapsed timing remains unverified. |
+| AC6 | PASS | transport_failures_are_typed_and_never_retried, stream_timeouts_are_distinguished_from_other_read_failures, wrapped_timeout_is_classified_before_generic_io_failure, client_initialization_error_is_static_and_payload_free, non_200_status_precedes_malformed_or_oversized_body and fetch_error_formatting_never_exposes_upstream_payload cover the required failures/statuses. The new failure pipeline verifies propagation from the collector through orchestration and normalization. |
+| AC7 | PASS | rate_limits_parse_unsigned_seconds_and_do_not_retry, invalid_retry_after_is_none_and_still_rate_limited and zero_retry_after_does_not_consume_second_scripted_response cover strict metadata and no second attempt. The new pipeline carries 418/429 metadata through the production collector. Retry and disabled-pool settings are source-reviewed; there is no sleeper or scheduler. |
+| AC8 | PARTIAL | cargo test --locked --offline --all-features passes all 60 tests. All test paths were inspected: fixed clocks/readers/fake transport; no sockets, sleeps, live requests or successful production execute. Cargo --offline prevents registry access, not arbitrary process networking. OS-enforced external-network denial was not independently established, so the literal network-disabled execution condition is not claimed complete. |
+| AC9 | PASS | Reviewed private builder and selected Reqwest/Hyper-util/TLS source plus active features. Actual-builder/request tests corroborate exposed settings. Main, CI and toolchain are unchanged; no auth/trading/wallet endpoints, credential loading, polling or application runtime entry point exist. The criterion requires configuration review, not a live handshake. |
+| AC10 | PARTIAL | All four exact local gates pass, documentation/fixtures match the code, accepted ADR is unchanged and scope/diff checks pass. Human acceptance of closure remains outstanding; AC8 evidence also remains partial. |
+
+### Verification, scope and recommendation
+
+The following commands were actually executed successfully on the final Rust code/tests:
+- cargo fmt --all -- --check
+- cargo clippy --locked --all-targets --all-features -- -D warnings
+- cargo build --locked --all-targets --all-features
+- cargo test --locked --all-features
+- cargo test --locked --offline --all-features
+
+Totals: 60 passed, zero failed/ignored (16 transport unit, 13 domain, 15 fetch, 1 public integration and 15 normalization; zero binary unit/doc cases). Local Markdown links and diff formatting were checked. Recovery hashes confirm no production source, Cargo manifest/lockfile or existing integration-test file changed during this phase. The active dependency graph has no unintended feature additions. No secrets, wallet/trading functionality or external requests were found in code/test review. No staged content was changed; pending Phase 0.2f work was preserved.
+
+Recommendation: **ACCEPT WITH LIMITATIONS** for the implementation and integration review. There is no code blocker to a separately authorized Git checkpoint. Full specification closure remains pending AC8 network-isolation evidence and human acceptance; keep specification 0003 APPROVED and do not recommend marking IMPLEMENTED yet. Hosted verification remains pending publication. Later CLI integration needs its own approved scope and must preserve the synchronous ownership, matching timeouts, one-attempt and read-only boundaries. No commit, push, live request, CLI, scheduler or deployment was performed.
+
+## Phase 0.2 — Final local integration and security acceptance review (2026-10-15)
+
+Verdict: **ACCEPT WITH LIMITATIONS** for the current implementation and local evidence. No critical integration or security defect was found. This verdict is a reviewer recommendation, not human acceptance or specification closure. Status remains APPROVED: AC8 and AC10 are PARTIAL.
+
+### Public construction and connected production path
+
+A caller creates a validated TimeoutConfig, initializes public ReqwestTransport::new(settings), supplies a Clock, and calls public MarketDataAdapter::new with that transport and the same connect/request durations. Either Pair::BtcUsdt or Pair::EthUsdt can then be passed to fetch_price; canonical strings work through fetch_price_str. No custom HttpTransport implementation, arbitrary client, endpoint or framework is required. A Clock implementation remains an approved caller-supplied seam.
+
+Source tracing confirms the actual path: MarketDataAdapter -> internally constructed MarketDataRequest -> ReqwestTransport::execute -> the reusable blocking client's execute -> status/Retry-After collection and limited reader -> orchestration's HTTP classification -> Binance schema/symbol validation -> exact Price -> one clock sample and PriceObservation. No real successful network fetch was invoked during review. The existing external-API and injected-reader pipeline tests substantiate construction/composition without pretending to exercise a TLS handshake.
+
+### Final AC assessment
+
+The detailed Phase 0.2g traceability remains applicable; this table records the final review disposition.
+
+| Criterion | Result | Concrete final evidence |
+| --- | --- | --- |
+| AC1 | PASS | production_requests_are_fixed_https_get_without_credentials_or_body; invalid_pair_inputs_never_invoke_transport; streaming_pipeline_preserves_both_pair_observations. Both mappings and strict zero-call rejection are covered. |
+| AC2 | PASS | streaming_pipeline_preserves_both_pair_observations checks both fixture paths, exact prices, Binance identity and fixed received_at; existing BTC/ETH fetch tests agree. |
+| AC3 | PASS | Required-field/type/duplicate/array/trailing-JSON/UTF-8/unknown-field normalization tests all pass. streaming_pipeline_preserves_failure_precedence_without_observation_or_retry checks schema-before-symbol-before-price and no observation time on errors. |
+| AC4 | PASS | price_strict_ascii_syntax, price_precision_boundaries, price_byte_limit, scale/coefficient overflow tests, exact_decimal_boundaries_survive_json_normalization and numeric-price JSON rejection. Source contains no floating-point price conversion. |
+| AC5 | PASS | timeout_defaults/timeout_invalid_settings/timeout_valid_boundaries and propagation/mismatch tests; streaming_oversize_reads_only_cap_plus_one; absent_or_dishonest_content_length_cannot_control_read_bound; partial-body timeout pipeline. The configured shared deadline is source-reviewed, not established by live elapsed-time tests. |
+| AC6 | PASS | client_initialization_error_is_static_and_payload_free, transport/read/nested-timeout tests, required non-200 status tests and integrated failure propagation; error text/Debug retain no upstream content or URL. |
+| AC7 | PASS | rate_limits_parse_unsigned_seconds_and_do_not_retry, invalid_retry_after_is_none_and_still_rate_limited, zero_retry_after_does_not_consume_second_scripted_response, and reader-to-rate-limit pipeline. Reqwest retry::never plus HTTP/1/disabled-pool behavior reviewed against selected source. |
+| AC8 | PARTIAL | 60 deterministic tests pass and the prior full offline run is recorded. Tests require no successful production HTTP request. Cargo --offline is not OS network isolation; external-network-denied execution remains unverified. |
+| AC9 | PASS | Private actual client builder, current feature graph and selected dependency-source review cover verified TLS, fixed destination, deadlines and disabled redirects/proxies/retries/decompression/cookies. No credentials/trading/wallet paths, listener, scheduler, CLI or application-owned runtime exist. |
+| AC10 | PARTIAL | All four exact gates pass again, fixtures/docs/ADRs align and local scans have no reported findings. AC8 evidence and explicit human acceptance of closure remain outstanding; no IMPLEMENTED claim is made. |
+
+### Security evidence and limits
+
+The [security baseline's Phase 0.2h evidence](../security/security-baseline.md#phase-02h--executed-local-security-evaluation-2026-10-15) records versions, provenance, hashes, scan policy, database revision and results. This final review checked original JSON/configuration rather than relying only on the earlier report: cargo-audit 0.22.2 returned exit 0 for 185 packages with zero vulnerabilities/warnings and no advisory ignores, severity threshold or target filters. Gitleaks 8.30.1 returned zero working-tree/history findings with default rules, an empty ignore file and no custom finding suppressions; only generated/internal working-tree paths were excluded. Its independent synthetic positive control detected github-pat as expected.
+
+Verified offline behavior: public API accessibility, actual request construction, exact-price/schema validation, timestamps, typed failures, no stale/default fallback, status precedence, rate-limit metadata, bounded application-consumed bytes and one fake attempt. Configuration/source-reviewed behavior: TLS certificate/hostname verification, platform trust, proxy/redirect/decompression controls, the shared response-body timeout and prevention of independent stale-connection retries by disabled pooling. No live Binance connectivity, certificate-rejection/redirect/proxy interaction, DNS availability, wire framing or hard elapsed-time guarantee is claimed.
+
+Residual risks: host/trust-store integrity, scanner blind spots and changing advisory data, native/build dependencies, HTTP/kernel buffers beyond the application byte cap, one connection/TLS handshake per fetch, and unverified hosted Ubuntu execution. Reqwest blocking must be created/called/dropped outside an async runtime; the borrowed adapter does not promise Send/Sync across threads. Future trading safeguards are documentary prerequisites only and never authorize financial operations. No conflict with accepted ADRs 0001/0002 was found.
+
+### Verification and checkpoint scope
+
+Executed successfully in this final review:
+- cargo fmt --all -- --check
+- cargo clippy --locked --all-targets --all-features -- -D warnings
+- cargo build --locked --all-targets --all-features
+- cargo test --locked --all-features
+
+Actual total: 60 passed, zero failed/ignored (16 transport unit, 13 domain, 15 fetch, 1 public integration, 15 normalization; zero binary unit/doc cases). No new tests or application behavior were introduced. Dependency inspection preserves all prior lockfile package versions and adds only the approved Reqwest direct dependency/associated resolved graph since checkpoint af007d861839d51a67724ad6f47d584c8dca9958. CI, pinned toolchain, main, ADR 0001 and original domain/fetch/normalization tests/fixtures remain unchanged.
+
+Documentation updates are limited to README, architecture, this evidence and the security baseline's completed local evaluation record. After those edits, the same integrity-checked Gitleaks 8.30.1 working-tree scan completed with exit 0 and zero findings; history and dependency content are unchanged, so retained history/audit evidence still applies at the recorded scope/revision. No new advisory fetch or live application request was made by this acceptance review.
+
+Recommended checkpoint scope: the 15 reviewed pending files covering the production transport, its approved dependency/lockfile, error mapping, transport/public-API tests, Security by Design harness/ADR/baseline and reconciled evidence. Exclude tools, temporary reports, generated target artifacts, CI changes and any new product functionality. A checkpoint requires separate explicit commit/push authorization; none was performed here.

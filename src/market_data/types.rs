@@ -7,12 +7,13 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-/// Errors needed by the domain milestone; no input or upstream payload is retained.
+/// Market data failures; no input or upstream payload is retained.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarketDataError {
     UnsupportedPair,
     InvalidPrice,
     InvalidConfiguration,
+    ClientInitialization,
     InvalidResponse,
     SymbolMismatch,
     ResponseTooLarge,
@@ -39,6 +40,7 @@ impl fmt::Display for MarketDataError {
             Self::InvalidResponse => "invalid market data response",
             Self::SymbolMismatch => "market data symbol mismatch",
             Self::ResponseTooLarge => "market data response too large",
+            Self::ClientInitialization => "market data client initialization failed",
             Self::Timeout => "market data request timed out",
             Self::Transport => "market data transport failed",
             Self::RateLimited { .. } => "market data rate limited",

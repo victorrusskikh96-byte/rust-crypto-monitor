@@ -37,6 +37,7 @@ impl<'a> MarketDataAdapter<'a> {
             .transport
             .execute(&request)
             .map_err(|failure| match failure {
+                TransportFailure::InvalidConfiguration => MarketDataError::InvalidConfiguration,
                 TransportFailure::Timeout => MarketDataError::Timeout,
                 TransportFailure::Transport => MarketDataError::Transport,
                 TransportFailure::ResponseTooLarge => MarketDataError::ResponseTooLarge,

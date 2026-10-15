@@ -14,7 +14,7 @@ struct TickerResponse {
 
 /// Normalize a successful ticker response body without performing any I/O.
 ///
-/// The future fetch layer must check HTTP status and bound reads while streaming.
+/// Fetch orchestration checks status; production transport bounds streaming reads.
 /// This byte-slice cap is defense in depth, not a substitute for bounded reads.
 /// The clock is sampled once, after validation, for local observation metadata.
 pub fn normalize_ticker(
