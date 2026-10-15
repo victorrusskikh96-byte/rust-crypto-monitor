@@ -1,7 +1,7 @@
 # 0002 — GitHub Actions CI bootstrap
 
 ## Status
-APPROVED scope: the human authorized Phase 0.1c after accepting Phase 0.1b. Implementation remains subject to human review. Do not mark IMPLEMENTED until all criteria, including an actual GitHub Actions run, are verified and closure is accepted.
+IMPLEMENTED. Reconciled on 2026-10-14 using the human-confirmed prior acceptance of foundation phases 0.1a–0.1d and the published baseline/hosted CI evidence below. Original requirements, approval conditions, and phase-local verification statements are preserved as historical records, not current pending work.
 
 ## Problem
 Local gates pass, but the repository needs automated verification on GitHub without introducing application behavior or deployment.
@@ -50,3 +50,10 @@ Human selects repository owner, visibility, and remote URL and approves the firs
 - AC7: PENDING. No remote, commit, push, or actual Actions run exists. Overall status remains APPROVED.
 
 Initial discovery returned exit 1 because optional validation commands were absent; no repository inspection failed. GitHub API tag/release lookups through the browser returned errors; git ls-remote successfully resolved the official v7 tag instead. No tools were installed. Full Actions semantic validation and Ubuntu execution remain pending.
+
+## Foundation closure reconciliation — 2026-10-14
+The human confirmed previous acceptance of phases 0.1a–0.1d and authorized this status reconciliation. Initial commit `19b7cf17302f7ee3ad9b3c2377483e446a96b92c` is published on main with origin configured. [Hosted run 38555819823](https://github.com/victorrusskikh96-byte/rust-crypto-monitor/actions/runs/38555819823) completed successfully for that exact commit; GitHub API inspection confirmed successful Formatting, Clippy, Build, and Tests steps. This closes the earlier hosted-verification prerequisite, including specification 0002 AC7. Baseline tests contain zero cases; no behavioral or adapter test coverage is claimed.
+
+The original status at phase review was: APPROVED scope: the human authorized Phase 0.1c after accepting Phase 0.1b. Implementation remains subject to human review. Do not mark IMPLEMENTED until all criteria, including an actual GitHub Actions run, are verified and closure is accepted.
+
+All pending/absent-remote/branch/publication statements in the original sections describe their historical phase, not current repository state. Prior acceptance and verified evidence now support IMPLEMENTED. Historical scope limits remain unchanged; this reconciliation does not retroactively expand them or authorize new code, dependencies, commits, or pushes. Current Market Data Adapter decisions are recorded in [ADR 0001](../adr/0001-market-data-adapter.md) and [specification 0003](0003-market-data-adapter.md). No separate 0.1d specification is introduced.

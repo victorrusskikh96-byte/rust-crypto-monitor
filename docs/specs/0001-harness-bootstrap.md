@@ -1,7 +1,7 @@
 # 0001 — Harness documentation bootstrap
 
 ## Status
-APPROVED. The human explicitly approved the Phase 0.1a documentation scope and architectural baseline on 2026-10-13. Phase 0.1a passed AC1–AC7 and was accepted by the Technical Lead. Phase 0.1b is now explicitly authorized. Keep the overall milestone APPROVED until remaining work is complete and accepted. The original sections below record the accepted Phase 0.1a scope; the addendum governs Phase 0.1b.
+IMPLEMENTED. Reconciled on 2026-10-14 using the human-confirmed prior acceptance of foundation phases 0.1a–0.1d and the published baseline/hosted CI evidence below. Original requirements, approval conditions, and phase-local verification statements are preserved as historical records, not current pending work.
 
 ## Problem
 The empty repository needs a small, authoritative documentation harness so future implementation follows approved requirements, predictable verification, and financial safety boundaries.
@@ -77,3 +77,10 @@ Historical Phase 0.1a statements about absent Cargo and inapplicable gates apply
 - `git check-ignore -v target/debug/rust-crypto-monitor.exe` matched /target/ in .gitignore. Cargo.lock contains only the local package. Source inspection confirmed only `fn main() {}` with no credentials, networking, or business logic.
 
 No quality-gate failures occurred. The exact named toolchain was installed through an explicitly approved rustup operation during the earlier interrupted attempt; it was already available on resumption. No new architectural decision or ADR was required. CI and future feature behavior remain unverified. The overall milestone stays APPROVED pending remaining work and human acceptance; do not start Phase 0.1c automatically.
+
+## Foundation closure reconciliation — 2026-10-14
+The human confirmed previous acceptance of phases 0.1a–0.1d and authorized this status reconciliation. Initial commit `19b7cf17302f7ee3ad9b3c2377483e446a96b92c` is published on main with origin configured. [Hosted run 38555819823](https://github.com/victorrusskikh96-byte/rust-crypto-monitor/actions/runs/38555819823) completed successfully for that exact commit; GitHub API inspection confirmed successful Formatting, Clippy, Build, and Tests steps. This closes the earlier hosted-verification prerequisite, including specification 0002 AC7. Baseline tests contain zero cases; no behavioral or adapter test coverage is claimed.
+
+The original status at phase review was: APPROVED. The human explicitly approved the Phase 0.1a documentation scope and architectural baseline on 2026-10-13. Phase 0.1a passed AC1–AC7 and was accepted by the Technical Lead. Phase 0.1b is now explicitly authorized. Keep the overall milestone APPROVED until remaining work is complete and accepted. The original sections below record the accepted Phase 0.1a scope; the addendum governs Phase 0.1b.
+
+All pending/absent-remote/branch/publication statements in the original sections describe their historical phase, not current repository state. Prior acceptance and verified evidence now support IMPLEMENTED. Historical scope limits remain unchanged; this reconciliation does not retroactively expand them or authorize new code, dependencies, commits, or pushes. Current Market Data Adapter decisions are recorded in [ADR 0001](../adr/0001-market-data-adapter.md) and [specification 0003](0003-market-data-adapter.md). No separate 0.1d specification is introduced.
