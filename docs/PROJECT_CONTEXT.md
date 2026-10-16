@@ -1,6 +1,6 @@
 # Rust Crypto Monitor — Project Context
 
-Snapshot: 2026-10-15. This is a recovery entrypoint, not a replacement for Git,
+Snapshot: 2026-10-16 (Phase W3.0 documentation review). This is a recovery entrypoint, not a replacement for Git,
 approved specifications, accepted ADRs or human authorization. Reconcile it before use.
 
 Evidence labels:
@@ -16,8 +16,21 @@ Evidence labels:
 - Target users: not yet specified beyond users of the planned monitoring CLI.
 - Current MVP slice: one read-only latest-price observation for BTC/USDT or ETH/USDT
   through Binance; continuous monitoring is not implemented.
-- Commercial and portfolio goals: not specified in repository requirements; do not
-  invent pricing, customers, revenue targets or portfolio acceptance criteria.
+- Career objective: transition into professional Web3 engineering using the human
+  developer's approximately three years of commercial backend experience together
+  with demonstrable independent Rust and Solana portfolio projects.
+- Target roles, in priority order: Web3 Backend Engineer; Rust Blockchain
+  Infrastructure Engineer; Solana Smart Contract Developer.
+- Professional positioning: represent commercial backend experience separately
+  from independent Rust/Web3 portfolio experience. Do not claim commercial Rust
+  or Solana experience that has not been demonstrated.
+- Primary monetization objective: Web3 employment and contract opportunities.
+  Building a commercial monitoring SaaS is no longer the primary objective;
+  SaaS subscriptions and live trading are not current priorities.
+- Portfolio direction: [Portfolio roadmap](PORTFOLIO_ROADMAP.md). Finish this
+  off-chain Rust adapter checkpoint and a working read-only CLI first; future
+  Solana escrow and indexer projects belong in separate repositories. This
+  documentation milestone authorizes no implementation or financial capabilities.
 - Source requirements: [README](../README.md), [architecture](architecture.md),
   [adapter specification](specs/0003-market-data-adapter.md).
 
@@ -68,39 +81,39 @@ Evidence labels:
 | 0.1a–0.1d | Harness, Cargo, CI | VERIFIED: specs 0001/0002 say IMPLEMENTED | [0001](specs/0001-harness-bootstrap.md), [0002](specs/0002-ci-bootstrap.md), committed files | Prior human acceptance is recorded, not newly granted here |
 | 0.2a–0.2b | Adapter specification/architecture | VERIFIED: APPROVED / ACCEPTED | [0003](specs/0003-market-data-adapter.md), [ADR 0001](adr/0001-market-data-adapter.md) | Overall adapter closure remains pending |
 | 0.2c–0.2e | Domain, normalization, orchestration | VERIFIED: committed core and successful hosted CI | HEAD and hosted run below | Does not include production transport |
-| 0.2f | Production HTTP transport | VERIFIED: implemented locally, uncommitted | Source and passing gates | No live connectivity or hosted transport verification |
-| 0.2g / final 0.2 | Integration/security acceptance review | VERIFIED: recorded ACCEPT WITH LIMITATIONS | Spec evidence and 60 tests rerun here | Reviewer recommendation; AC8/AC10 partial, human closure pending |
-| Security baseline / ADR 0002 | Mandatory security principle and requirements | VERIFIED: documents present, ADR ACCEPTED locally | [Baseline](security/security-baseline.md), [ADR 0002](adr/0002-security-by-design.md) | Policy is not complete operational enforcement; unpublished |
+| 0.2f | Production HTTP transport | VERIFIED: committed in current HEAD | Git/source; historical local gate evidence | No newly verified live connectivity or hosted transport execution |
+| 0.2g / final 0.2 | Integration/security acceptance review | VERIFIED: recorded ACCEPT WITH LIMITATIONS | Spec evidence and W3.0 rerun: 60 passing tests | Reviewer recommendation; AC8/AC10 partial, human closure pending |
+| Security baseline / ADR 0002 | Mandatory security principle and requirements | VERIFIED: documents present, ADR ACCEPTED and committed | [Baseline](security/security-baseline.md), [ADR 0002](adr/0002-security-by-design.md) | Policy is not complete operational enforcement |
 | 0.2h | Local cargo-audit/Gitleaks evaluation | REPORTED: successful; evidence recorded | Baseline provenance/result tables | Scanners not rerun or original reports revalidated in this milestone |
-| Context v1 | Repository recovery entrypoint | VERIFIED: local documentation prepared | This file, AGENTS.md and README links | Human review pending; unpublished |
+| Context v1 / W3.0 | Recovery entrypoint / career direction | VERIFIED: context v1 committed; W3.0 documentation prepared | Git and this file; portfolio roadmap | W3.0 accepted by human at consolidated checkpoint; no implementation authorization |
 
 ## 5. Current Repository State
 
-**VERIFIED** during this milestone, before any new checkpoint:
+**VERIFIED** at W3.0 recovery on 2026-10-16:
 
-- Branch: main. Local origin/main also points to HEAD; a local tracking ref alone
-  does not prove that the remote branch has not changed.
-- Latest committed SHA: `af007d861839d51a67724ad6f47d584c8dca9958`.
-- Commit subject: `feat: add validated crypto market data adapter core`.
-- Existing unpublished work: production transport, reqwest/lockfile additions,
-  error mapping, transport/public integration tests, security harness/ADR/baseline
-  and implementation/acceptance documentation. No staged changes at recovery.
-- This milestone adds docs/PROJECT_CONTEXT.md and references in AGENTS.md/README.md.
-  Existing source/dependency/CI/index contents are preserved; query Git for exact paths.
-- Local verification rerun on 2026-10-15: all four mandatory Cargo gates passed;
-  **60 passed, zero failed/ignored** (16 transport, 13 domain, 15 fetch,
-  1 public integration, 15 normalization; zero binary/doc cases).
-- Latest confirmed hosted result for HEAD: [run 38678079406](https://github.com/victorrusskikh96-byte/rust-crypto-monitor/actions/runs/38678079406),
-  completed successfully at 2026-10-15T03:47:49Z. GitHub API inspection confirmed
-  Formatting, Clippy, Build and Tests steps succeeded for the exact SHA above.
-- Hosted success applies to committed Phase 0.2e, not current unpublished changes.
-- No live provider request, installation, commit or push performed in this milestone.
+- Branch: main; local origin/main points to HEAD. Remote freshness is unverified.
+- Latest committed SHA: `7238c3e0fa8163a0b71f48a57ed2f4eda8e60305`.
+- Commit subject: `improved feeling of context with chatgpt and codex`.
+- Working tree/index were clean before W3.0. HEAD includes transport, dependencies,
+  tests, security baseline/ADR and context v1 previously described as unpublished.
+  Git inclusion does not establish human acceptance of adapter closure.
+- W3.0 changes only this context and the portfolio roadmap. No source, tests,
+  dependencies, CI, toolchain or accepted decisions are changed.
+- Local W3.0 verification on 2026-10-16: cargo fmt --all -- --check;
+  cargo clippy --locked --all-targets --all-features -- -D warnings;
+  cargo build --locked --all-targets --all-features; cargo test --locked --all-features
+  all passed. Tests: 60 passed, zero failed/ignored. Local links and Git diff checks
+  passed. No live connectivity, OS network isolation or scanner rerun is claimed.
+- Historical hosted evidence for `af007d8`: [run 38678079406](https://github.com/victorrusskikh96-byte/rust-crypto-monitor/actions/runs/38678079406).
+  That result covers the older core checkpoint. Hosted CI for current HEAD has
+  not been revalidated in W3.0; no current hosted success is inferred.
+- No live provider request, installation, commit or push performed in W3.0.
 
 ## 6. Architecture Decisions
 
 - [ADR 0001 — Market Data Adapter](adr/0001-market-data-adapter.md): ACCEPTED.
 - [ADR 0002 — Security by Design](adr/0002-security-by-design.md): ACCEPTED principle,
-  currently an untracked local document, not yet part of committed history.
+  committed in current HEAD; operational controls remain separately verified.
 
 Read the records themselves before dependent work; this index does not amend them.
 
@@ -125,7 +138,8 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
 - **VERIFIED:** specification 0003 AC1–AC7/AC9 PASS; AC8/AC10 PARTIAL per its evidence.
 - AC8: deterministic tests pass, but OS-enforced external-network-denied execution
   is not established. Cargo --offline is not process network isolation.
-- AC10: explicit human acceptance of closure remains outstanding; keep APPROVED.
+- AC10: milestone acceptance with limitations does not establish full specification
+  closure or complete AC1–AC10 satisfaction; keep APPROVED.
 - Real Binance connectivity, DNS/TLS rejection, regional availability, wire behavior
   and elapsed deadlines are unverified; configured timeouts are not hard real-time.
 - Body cap bounds application-consumed bytes, not every HTTP/kernel buffer.
@@ -144,11 +158,17 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
 
 - Completed: committed core; local transport/integration; security documentation;
   recorded scanner evaluation; this context entrypoint and local verification.
-- Approved but not executed: no new implementation, publication or CI change is
-  authorized by this documentation milestone. Context review/acceptance is pending.
-- **PLANNED (proposal only):** latest Phase 0.2 checkpoint including reviewed local
-  adapter/security changes. It must not be assumed executed until Git history proves it.
-  Earlier checkpoint authorization does not authorize publishing this newer scope.
+- W3.0 is human-accepted. The consolidated checkpoint request accepts 0.2f,
+  0.2g with limitations, 0.2h, Security Baseline v1 and Context Management v1;
+  it authorizes exactly one checkpoint commit and a non-force push to origin/main.
+  This does not establish complete AC1–AC10 satisfaction or authorize CLI/Solana
+  implementation, CI changes or new repository creation.
+- **VERIFIED:** Git now contains the adapter/security checkpoint in HEAD. Remaining
+  acceptance and verification gaps are not closed merely because it was committed.
+- **PLANNED:** complete adapter checkpoint review, then specify and obtain approval
+  for a working read-only CLI; see [roadmap milestones A1/A2](PORTFOLIO_ROADMAP.md).
+  Solana implementation remains deferred until Project A is demonstrable and each
+  separate repository has its own approved scope and security requirements.
 - **PLANNED (requires approval):** AC8 isolation verification, human closure review,
   hosted security-tool evaluation/CI proposal and later CLI integration.
 - Scheduling, alerts, persistence and notification transport remain future/undecided.
