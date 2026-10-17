@@ -5,6 +5,22 @@ Rust Crypto Monitor will be a long-running, single-process CLI monitoring servic
 
 Only public, read-only cryptocurrency market data is permitted. Bootstrap introduces no third-party dependencies. Phase 0.1b created the minimal Cargo package with an empty main function. The monitoring responsibilities below describe the intended application, not existing behavior.
 
+## M1 current behavior and accepted future extension
+M1 explicitly authorizes a synchronous one-observation CLI using the unchanged
+adapter; [CLI specification 0006](specs/0006-read-only-cli.md) records its contract.
+The empty-main and deferred-integration statements below describe historical
+checkpoints. No polling, server or frontend is implemented by M1.
+
+After text review against M0.1, the Technical Lead authorized
+[specification 0005](specs/0005-freelance-portfolio-mvp.md) as APPROVED and
+[ADR 0003](adr/0003-full-stack-portfolio-architecture.md) as ACCEPTED.
+The future application boundary may use Axum/Tokio and React/TypeScript/Vite;
+one bounded worker owns blocking transport outside the application async runtime.
+This extends the original CLI-only/no application runtime baseline at the future
+web boundary; ADR 0001 and specification 0003 retain their synchronous adapter
+contract. Exact dependency adoption requires compatibility/security verification
+and separate implementation authorization; M1 adds no dependencies or web code.
+
 ## Future responsibilities
 As approved feature specifications require them, separate responsibilities within the single process:
 - Ingestion: acquire public market data and handle source failures.

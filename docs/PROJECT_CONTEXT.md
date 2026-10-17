@@ -1,6 +1,6 @@
 # Rust Crypto Monitor — Project Context
 
-Snapshot: 2026-10-16 (Phase W3.0 documentation review). This is a recovery entrypoint, not a replacement for Git,
+Snapshot: 2026-10-17 (M2a pure valuation domain; earlier evidence preserved). This is a recovery entrypoint, not a replacement for Git,
 approved specifications, accepted ADRs or human authorization. Reconcile it before use.
 
 Evidence labels:
@@ -12,8 +12,11 @@ Evidence labels:
 ## 1. Project Identity
 
 - Product: **Rust Crypto Monitor**.
-- Purpose: a planned long-running CLI service for public cryptocurrency monitoring.
-- Target users: not yet specified beyond users of the planned monitoring CLI.
+- Original purpose: a planned long-running CLI monitoring service.
+- Product Owner-approved direction: a demonstrable Full-Stack Crypto Market &
+  Portfolio Dashboard for international Upwork clients; future architecture accepted,
+  current code has the synchronous CLI plus pure M2a valuation, no web/frontend.
+- Target users: portfolio reviewers and users manually estimating BTC/ETH holdings.
 - Current MVP slice: one read-only latest-price observation for BTC/USDT or ETH/USDT
   through Binance; continuous monitoring is not implemented.
 - Career objective: transition into professional Web3 engineering using the human
@@ -24,13 +27,15 @@ Evidence labels:
 - Professional positioning: represent commercial backend experience separately
   from independent Rust/Web3 portfolio experience. Do not claim commercial Rust
   or Solana experience that has not been demonstrated.
-- Primary monetization objective: Web3 employment and contract opportunities.
+- Immediate portfolio objective: international Upwork backend/full-stack contracts.
+  Longer-term Web3 employment and contract opportunities remain valid.
   Building a commercial monitoring SaaS is no longer the primary objective;
   SaaS subscriptions and live trading are not current priorities.
 - Portfolio direction: [Portfolio roadmap](PORTFOLIO_ROADMAP.md). Finish this
-  off-chain Rust adapter checkpoint and a working read-only CLI first; future
-  Solana escrow and indexer projects belong in separate repositories. This
-  documentation milestone authorizes no implementation or financial capabilities.
+  off-chain Rust adapter checkpoint; M0 proposes a dashboard instead of requiring
+  a standalone CLI before the portfolio release. Future
+  Solana escrow and indexer projects belong in separate repositories. M0 direction
+  alone grants no implementation/financial scope; M1 separately authorizes the CLI.
 - Source requirements: [README](../README.md), [architecture](architecture.md),
   [adapter specification](specs/0003-market-data-adapter.md).
 
@@ -51,7 +56,15 @@ Evidence labels:
 **VERIFIED** by manifest, toolchain, source and workflow inspection:
 
 - One Rust package, edition 2024, pinned Rust 1.99.0; Windows PowerShell development.
-- [src/main.rs](../src/main.rs) is empty; [library](../src/lib.rs) exposes market_data.
+- [src/main.rs](../src/main.rs) wires a synchronous one-observation CLI through
+  [cli.rs](../src/cli.rs); [library](../src/lib.rs) exposes cli, market_data and portfolio.
+- CLI validates one canonical OS argument before constructing production transport;
+  stdout has exact price/USDT/provider and signed UTC Unix-seconds observation time.
+  Exit codes: 0 success, 2 usage, 3 fetch/domain, 4 output. No new dependencies.
+- [Portfolio domain](../src/portfolio.rs): validated quantities, fixed BTC/ETH slots,
+  supplied quote age/attempt status, exact checked coefficient values/totals and
+  half-even allocation. Missing/stale positive holdings withhold total/allocations.
+  No I/O, clocks, JSON, web code, mutable Decimal exposure or new dependencies.
 - [Domain](../src/market_data/types.rs): Pair, positive exact-decimal Price,
   TimeoutConfig, PriceObservation, provider identity, Clock and typed safe errors.
 - [Normalization](../src/market_data/binance.rs): private typed Binance DTO,
@@ -85,6 +98,9 @@ Evidence labels:
 | 0.2g / final 0.2 | Integration/security acceptance review | VERIFIED: recorded ACCEPT WITH LIMITATIONS | Spec evidence and W3.0 rerun: 60 passing tests | Reviewer recommendation; AC8/AC10 partial, human closure pending |
 | Security baseline / ADR 0002 | Mandatory security principle and requirements | VERIFIED: documents present, ADR ACCEPTED and committed | [Baseline](security/security-baseline.md), [ADR 0002](adr/0002-security-by-design.md) | Policy is not complete operational enforcement |
 | 0.2h | Local cargo-audit/Gitleaks evaluation | REPORTED: successful; evidence recorded | Baseline provenance/result tables | Scanners not rerun or original reports revalidated in this milestone |
+| M0 / M0.1 | Freelance dashboard planning/refinement | APPROVED specification / ACCEPTED ADR through M1 review | [0005](specs/0005-freelance-portfolio-mvp.md), [ADR 0003](adr/0003-full-stack-portfolio-architecture.md) | Future Option B accepted; exact versions require compatibility/security review; no web implementation |
+| M1 CLI | One observation using existing adapter | Human-accepted with limitations at M2a request | [0006](specs/0006-read-only-cli.md), [tests](../tests/cli.rs) | 73-test baseline reproduced; current hosted CI/Linux/isolation gaps remain |
+| M2a | Pure exact portfolio valuation | Implemented locally; review pending | [0007](specs/0007-exact-portfolio-valuation-domain.md), [tests](../tests/portfolio.rs) | No HTTP/serialization; caller supplies monotonic freshness metadata; conservative arithmetic capacity |
 | Context v1 / W3.0 | Recovery entrypoint / career direction | VERIFIED: context v1 committed; W3.0 documentation prepared | Git and this file; portfolio roadmap | W3.0 accepted by human at consolidated checkpoint; no implementation authorization |
 
 ## 5. Current Repository State
@@ -109,11 +125,45 @@ Evidence labels:
   not been revalidated in W3.0; no current hosted success is inferred.
 - No live provider request, installation, commit or push performed in W3.0.
 
+M0 recovery on 2026-10-17: Git HEAD is
+`0f95a3cf2fb638df88d382e298fc6364b8867df9`,
+`feat: finalize market data adapter and web3 portfolio foundation`; main tracks
+local origin/main and the working tree/index were clean before M0. This supersedes
+the current-HEAD value in the preserved W3.0 snapshot above; remote freshness and
+current hosted CI are unverified. Source still has an empty binary and no dashboard.
+M0/M0.1 changes only two proposals and this context/roadmap; no application capability
+or dependency is added. Pre-M0 local four-gate verification passed with 60 tests;
+M0 verification is reported in the review response, without inferring hosted success.
+
+M1 recovery: HEAD/local origin/main and read-only git ls-remote origin main all
+match 0f95a3c on 2026-10-17. M0/M0.1's four unpublished documentation files were
+preserved/refined; the index remains unchanged. Current source now includes the CLI
+in 0006; the empty-main statement above is the historical M0 recovery snapshot.
+M1 verification: all four exact Cargo gates passed on Windows, 73 tests passed
+(60 existing +13 CLI), zero failed/ignored. CLI-first test baseline failed on missing
+runner; platform fixtures were corrected to 100 ns SystemTime increments.
+Document links/JSON/status/scope/whitespace checks passed. No provider request,
+dependency change, commit or push performed. Current hosted CI, Linux execution,
+OS network denial and scanner reruns are unverified.
+
+M2a verification on 2026-10-17: baseline 73 tests/four gates reproduced first;
+final four exact gates passed with 105 tests (73 unchanged +32 pure valuation).
+Preservation hashes confirm CLI/core/dependencies/CI/prior tests/0005 unchanged.
+No M2a provider calls, HTTP/JSON, scanner rerun, commits or pushes; review pending.
+M1 is human-accepted with limitations; 0006 records that acceptance.
+
 ## 6. Architecture Decisions
 
 - [ADR 0001 — Market Data Adapter](adr/0001-market-data-adapter.md): ACCEPTED.
 - [ADR 0002 — Security by Design](adr/0002-security-by-design.md): ACCEPTED principle,
   committed in current HEAD; operational controls remain separately verified.
+
+- [ADR 0003 — Full-Stack Portfolio Architecture](adr/0003-full-stack-portfolio-architecture.md):
+  ACCEPTED through M1 Technical Lead authorization after checking M0.1 text.
+  Future Axum/Tokio + React/TypeScript/Vite and bounded worker extend the historical
+  CLI-only application baseline; synchronous adapter contract remains unchanged.
+  [0005](specs/0005-freelance-portfolio-mvp.md) is APPROVED, not IMPLEMENTED.
+  Exact dependencies remain verification candidates; M1 adds no web/runtime packages.
 
 Read the records themselves before dependent work; this index does not amend them.
 
@@ -140,8 +190,9 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
   is not established. Cargo --offline is not process network isolation.
 - AC10: milestone acceptance with limitations does not establish full specification
   closure or complete AC1–AC10 satisfaction; keep APPROVED.
-- Real Binance connectivity, DNS/TLS rejection, regional availability, wire behavior
-  and elapsed deadlines are unverified; configured timeouts are not hard real-time.
+- A later user-requested BTC CLI run succeeded (prior tool evidence; not rerun in
+  M2a). This proves one observation only. DNS/TLS rejection, repeatable availability,
+  regional coverage, wire behavior and elapsed deadlines remain unverified; configured timeouts are not hard real-time.
 - Body cap bounds application-consumed bytes, not every HTTP/kernel buffer.
 - Blocking transport must be created/used/dropped outside an async runtime.
 - Hosted Ubuntu transport/scanner execution, confidential vulnerability intake,
@@ -165,14 +216,14 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
   implementation, CI changes or new repository creation.
 - **VERIFIED:** Git now contains the adapter/security checkpoint in HEAD. Remaining
   acceptance and verification gaps are not closed merely because it was committed.
-- **PLANNED:** complete adapter checkpoint review, then specify and obtain approval
-  for a working read-only CLI; see [roadmap milestones A1/A2](PORTFOLIO_ROADMAP.md).
-  Solana implementation remains deferred until Project A is demonstrable and each
-  separate repository has its own approved scope and security requirements.
-- **PLANNED (requires approval):** AC8 isolation verification, human closure review,
-  hosted security-tool evaluation/CI proposal and later CLI integration.
-- Scheduling, alerts, persistence and notification transport remain future/undecided.
-  No trading, deployment or product expansion is authorized.
+- M1 is human-accepted with limitations. M2a authorizes only pure deterministic
+  valuation per [0007](specs/0007-exact-portfolio-valuation-domain.md), tests and
+  necessary docs; it is prepared for review, not human-accepted closure.
+- M2b recommendation: separately approve HTTP scope, DTO/decimal-string mapping,
+  bounded worker/state/freshness/admission and dependency/security verification.
+  No HTTP implementation, packages, live calls, commits/pushes or deployment now.
+- Adapter AC8/AC10, hosted CI/security-tool/operational gaps remain. Optional Solana,
+  polling, credentials, trading and wallet operations remain outside current scope.
 
 ## 10. Context Recovery Instructions
 

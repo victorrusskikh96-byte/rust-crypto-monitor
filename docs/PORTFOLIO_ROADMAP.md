@@ -21,41 +21,80 @@ SaaS subscriptions and live trading are not current priorities.
 Prioritize demonstrated competence over feature count. Milestones have evidence
 and approval gates rather than delivery dates. Finish Rust Crypto Monitor first.
 
+## M0 update — Freelance portfolio MVP (2026-10-17)
+
+The Product Owner approved international Upwork portfolio direction and this
+documentation milestone. The immediate goal is a finished Crypto Market & Portfolio
+Dashboard demonstrating Rust backend and full-stack skills; longer-term Web3
+employment and Projects B/C remain valid. No implementation or new stack is approved.
+[Draft specification 0005](specs/0005-freelance-portfolio-mvp.md) and
+[proposed ADR 0003](adr/0003-full-stack-portfolio-architecture.md) are review inputs.
+
+M0.1: Technical Lead conditionally approves Option B (Rust core + Axum API +
+React/TypeScript/Vite). At that historical checkpoint specification stayed DRAFT
+and ADR PROPOSED; the M1 update below supersedes those approval statuses.
+Refinements define one bounded transport-owning worker, request/shutdown lifecycle,
+deterministic refresh/cooldown, exact decimal valuation and loopback Host/Origin/
+resource limits. ADR 0003 records exact proposed dependency versions with official
+metadata and licenses; transitive/advisory/platform verification remains M1 work.
+No implementation, install, CI, provider requests, commits or pushes are authorized.
+
+M1 update: after checking the M0.1 text, specification 0005 is APPROVED and
+ADR 0003 ACCEPTED for the future full-stack direction. Exact dependency versions
+remain verification candidates. The Technical Lead explicitly scopes current M1
+to a working one-observation synchronous CLI, recorded in
+[0006](specs/0006-read-only-cli.md). This overrides the older M0 milestone label
+“M1 stack preparation”; it does not remove or implement any dashboard capability.
+Later full-stack steps and supporting dependency/security review remain separately
+authorized work; no web install/code, live checks, commits or publication in M1.
+
 ## Project A — Rust Crypto Monitor
 
 An off-chain Rust engineering portfolio project in this repository. Demonstrate
 reliable exchange connectivity, exact financial data processing, explicit errors
 and timeouts, security controls, deterministic testing, observability and measured
 performance. These are completion targets, not claims that all exist today.
-Preserve the single-process synchronous architecture, exact prices, fixed public
-provider, bounded reads, one attempt and safe failures from
+Preserve the synchronous adapter, exact prices, fixed public provider, bounded
+reads, one attempt and safe failures from
 [specification 0003](specs/0003-market-data-adapter.md) and
 [ADR 0001](adr/0001-market-data-adapter.md).
 
 | Milestone | Independently verifiable result and review gate |
 | --- | --- |
 | A1 — Finish adapter checkpoint | Reconcile committed evidence with current Git, rerun required gates under approved scope, address AC8 OS-enforced network-denial evidence and obtain explicit human AC10 closure review. Keep unresolved criteria partial; do not mark the specification IMPLEMENTED prematurely. |
-| A2 — Working read-only CLI | First approve a small CLI specification with deterministic acceptance cases for supported pair input, exact output with units/provider/local observation time, errors and exit behavior. Implement one on-demand observation through the existing adapter; demonstrate fixture success/failure without credentials. A separately approved public connectivity smoke check may supplement, never replace, deterministic tests and must respect regional restrictions. |
+| A2 — Dashboard MVP proposal | M0 proposes market overview, manual BTC/ETH quantities with exact Rust-side USDT valuation/allocation, and honest provider health; explicit stale/unavailable/loading states and labeled fixtures. Option B and the future runtime extension are accepted through M1 text review; exact dependencies and each implementation milestone still require verification/authorization. Standalone CLI is no longer required first. |
 | A3 — Portfolio evidence | Approve bounded, safe diagnostic output and a reproducible measurement plan before implementation. Record fixture workload, environment, sample count, latency distribution and resource measurements with limitations; distinguish local processing measurements from optional live-network timing. Prepare the quality packet below and demonstrate CI for the exact reviewed commit. |
 
-Immediate implementation priority is adapter completion followed by A2. Main is
-currently empty. CLI integration is excluded from specification 0003 and needs
-its own approved specification. No polling, alerts, persistence, async migration,
-provider fallback, SaaS or trading is implied by this roadmap.
+M0 replaces the earlier CLI-first next step with architectural review of the
+dashboard. Historical CLI/synchronous choices remain recorded in architecture and
+ADR 0001; the future application runtime extension is now accepted/reconciled
+through M1. The adapter remains synchronous.
+Implementation sequence, each separately scoped: current M1 read-only CLI;
+future stack compatibility/security review before web dependency adoption; M2 exact valuation/contracts with tests; M3
+bounded worker/local API/freshness/security; M4 responsive UI/persistence; M5
+deterministic E2E, security and reproduction plus separately approved CI work; M6
+genuine portfolio evidence and human release acceptance. See 0005 for measurable gates.
 
-Client/interviewer-ready evidence: reproducible pinned setup; a working read-only
-CLI demonstration plus deterministic failure example; an explanation of
-transport/domain/normalization boundaries; review of caller, provider and host
-trust boundaries; malformed-input, size, timeout and error-precedence tests;
-passing four-gate CI tied to a commit; accepted ADRs; explicit freshness,
-regional-access and timing limitations; reproducible measurements from A3.
+Client-ready means working scenarios, real observations when available, explicit
+provider failures and provenance, accurate valuation, clean-checkout Windows/Linux
+setup, passing backend/frontend tests, hosted CI for the exact final commit,
+security review and accepted architecture. Produce 3–5 genuine screenshots, a short
+recorded success/failure demonstration, honest English README and Upwork case study.
+Label fixture captures and independent versus commercial experience. These are
+future deliverables, not artifacts produced in M0; no hosting is required.
+
+Local-only quantity persistence is proposed with opt-in and privacy controls.
+No polling, fallback, accounts, credentials, trading, wallet or payment capability.
+Optional Solana public-address balance lookup requires separate specification,
+security review and approval and must not block release. Projects B/C remain
+separate longer-term work; no signing or transaction scope is added here.
 
 Interview questions and expected explanations:
 
 1. Why exact decimals? Binary floating point can change financial values; explain
    exact string parsing, representational limits, rejection and USDT units.
-2. Why synchronous REST? Two on-demand pairs do not justify an application async
-   runtime; explain blocking behavior and the approved reconsideration triggers.
+2. How does a synchronous adapter fit a web server? Explain the proposed dedicated
+   worker, bounded admission, ownership and the accepted future runtime extension.
 3. What does a timeout or body cap guarantee? Explain the total HTTP budget and
    cap+1 reads, distinguishing configured bounds from DNS/OS timing and total memory.
 4. What do offline tests prove? Explain injected transport/clock and failure
@@ -98,7 +137,8 @@ Interview questions and expected explanations:
 A separate future repository demonstrating public Solana RPC/event ingestion,
 Rust asynchronous processing, PostgreSQL persistence, idempotency and recovery,
 transaction commitment/finality handling, observability and reproducible tests.
-This future async architecture does not change Project A's accepted blocking design.
+Project A's adapter remains blocking; its proposed web application runtime is
+separately reviewed through ADR 0003.
 
 | Milestone | Independently verifiable result and review gate |
 | --- | --- |
