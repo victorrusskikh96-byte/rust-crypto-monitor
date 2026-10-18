@@ -1,7 +1,6 @@
 # Rust Crypto Monitor — Project Context
 
-Snapshot: 2026-10-17 (M2a pure valuation domain; earlier evidence preserved). This is a recovery entrypoint, not a replacement for Git,
-approved specifications, accepted ADRs or human authorization. Reconcile it before use.
+Snapshot: 2026-10-18 (M2b.1 local HTTP accepted; Git checkpoint authorized). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization.
 
 Evidence labels:
 - **VERIFIED** — confirmed by inspected artifacts or executed checks; scope is stated.
@@ -15,7 +14,8 @@ Evidence labels:
 - Original purpose: a planned long-running CLI monitoring service.
 - Product Owner-approved direction: a demonstrable Full-Stack Crypto Market &
   Portfolio Dashboard for international Upwork clients; future architecture accepted,
-  current code has the synchronous CLI plus pure M2a valuation, no web/frontend.
+  current code has the synchronous CLI, pure valuation and bounded local HTTP API;
+  refresh/worker/frontend remain deferred.
 - Target users: portfolio reviewers and users manually estimating BTC/ETH holdings.
 - Current MVP slice: one read-only latest-price observation for BTC/USDT or ETH/USDT
   through Binance; continuous monitoring is not implemented.
@@ -36,8 +36,7 @@ Evidence labels:
   a standalone CLI before the portfolio release. Future
   Solana escrow and indexer projects belong in separate repositories. M0 direction
   alone grants no implementation/financial scope; M1 separately authorizes the CLI.
-- Source requirements: [README](../README.md), [architecture](architecture.md),
-  [adapter specification](specs/0003-market-data-adapter.md).
+- Source requirements: [README](../README.md), [architecture](architecture.md), [adapter specification](specs/0003-market-data-adapter.md).
 
 ## 2. Working Model
 
@@ -57,7 +56,8 @@ Evidence labels:
 
 - One Rust package, edition 2024, pinned Rust 1.99.0; Windows PowerShell development.
 - [src/main.rs](../src/main.rs) wires a synchronous one-observation CLI through
-  [cli.rs](../src/cli.rs); [library](../src/lib.rs) exposes cli, market_data and portfolio.
+  [cli.rs](../src/cli.rs); [library](../src/lib.rs) exposes cli, market_data, portfolio and http.
+- [HTTP](../src/http/mod.rs): --serve, IPv4 loopback:3000, dashboard/valuation only; current-thread runtime and bounded resources/deadlines. Empty immutable state, test-only fixtures, no provider capability.
 - CLI validates one canonical OS argument before constructing production transport;
   stdout has exact price/USDT/provider and signed UTC Unix-seconds observation time.
   Exit codes: 0 success, 2 usage, 3 fetch/domain, 4 output. No new dependencies.
@@ -78,7 +78,7 @@ Evidence labels:
   fetch_price for either typed Pair. No custom transport implementation is needed.
 - [Cargo.toml](../Cargo.toml) pins rust_decimal 1.43.0, serde 1.0.229,
   serde_json 1.0.154 and reqwest 0.13.5; defaults disabled. Reqwest enables only
-  blocking/rustls. No application-owned async runtime; reqwest uses one internally.
+  blocking/rustls. M2b.1: exact Axum 0.8.9/Tokio 1.53.3/Hyper 1.12.0/hyper-util 0.1.21, defaults disabled. Only --serve owns an application runtime.
 - [Tests](../tests/integration.rs), domain/fetch/normalization suites, fixture JSON
   and [transport tests](../src/market_data/transport/tests.rs) use deterministic seams.
 - [CI](../.github/workflows/ci.yml): ubuntu-24.04, pinned checkout, read-only token,
@@ -100,10 +100,15 @@ Evidence labels:
 | 0.2h | Local cargo-audit/Gitleaks evaluation | REPORTED: successful; evidence recorded | Baseline provenance/result tables | Scanners not rerun or original reports revalidated in this milestone |
 | M0 / M0.1 | Freelance dashboard planning/refinement | APPROVED specification / ACCEPTED ADR through M1 review | [0005](specs/0005-freelance-portfolio-mvp.md), [ADR 0003](adr/0003-full-stack-portfolio-architecture.md) | Future Option B accepted; exact versions require compatibility/security review; no web implementation |
 | M1 CLI | One observation using existing adapter | Human-accepted with limitations at M2a request | [0006](specs/0006-read-only-cli.md), [tests](../tests/cli.rs) | 73-test baseline reproduced; current hosted CI/Linux/isolation gaps remain |
-| M2a | Pure exact portfolio valuation | Implemented locally; review pending | [0007](specs/0007-exact-portfolio-valuation-domain.md), [tests](../tests/portfolio.rs) | No HTTP/serialization; caller supplies monotonic freshness metadata; conservative arithmetic capacity |
+| M2a | Pure exact portfolio valuation | Human-accepted before M2b.1 | [0007](specs/0007-exact-portfolio-valuation-domain.md), [tests](../tests/portfolio.rs) | No HTTP/serialization; caller supplies monotonic freshness metadata; conservative arithmetic capacity |
+| M2b.1 | Local HTTP dashboard/valuation foundation | Human-accepted; final local 137-test verification reproduced | [0005 evidence](specs/0005-freelance-portfolio-mvp.md), [HTTP tests](../src/http/tests.rs) | No worker/refresh, frontend, Linux or hosted verification for these changes |
 | Context v1 / W3.0 | Recovery entrypoint / career direction | VERIFIED: context v1 committed; W3.0 documentation prepared | Git and this file; portfolio roadmap | W3.0 accepted by human at consolidated checkpoint; no implementation authorization |
 
 ## 5. Current Repository State
+
+M2b.1 checkpoint (2026-10-18): base `1d43a876e06fcfdcfc026ee3c6faec153a86febe`; hosted run 39040626584 verified for that older SHA. Product Owner accepted M2b.1 and authorized one commit/non-force push. Resolve the checkpoint SHA from Git and verify its hosted result separately.
+Baseline 105/four gates reproduced; checkpoint rerun passes all four gates/137 tests (105 +30 HTTP +2 startup). Actual binary loopback smoke passed. Nine packages added; no prior version changes.
+Fresh cargo-audit 0.22.2: 194 packages/zero findings, DB 999ec89d updated 2026-10-17. See 0005 for scope/features/security/TDD/limits. No provider request. These are pre-publication checks, not hosted checkpoint results; historical snapshots follow.
 
 **VERIFIED** at W3.0 recovery on 2026-10-16:
 
@@ -166,7 +171,6 @@ M1 is human-accepted with limitations; 0006 records that acceptance.
   Exact dependencies remain verification candidates; M1 adds no web/runtime packages.
 
 Read the records themselves before dependent work; this index does not amend them.
-
 ## 7. Security and Financial Boundaries
 
 Security by Design is mandatory. Review relevant trust boundaries, untrusted inputs,
@@ -216,12 +220,9 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
   implementation, CI changes or new repository creation.
 - **VERIFIED:** Git now contains the adapter/security checkpoint in HEAD. Remaining
   acceptance and verification gaps are not closed merely because it was committed.
-- M1 is human-accepted with limitations. M2a authorizes only pure deterministic
-  valuation per [0007](specs/0007-exact-portfolio-valuation-domain.md), tests and
-  necessary docs; it is prepared for review, not human-accepted closure.
-- M2b recommendation: separately approve HTTP scope, DTO/decimal-string mapping,
-  bounded worker/state/freshness/admission and dependency/security verification.
-  No HTTP implementation, packages, live calls, commits/pushes or deployment now.
+- M1/M2a/M2b.1 are accepted. Current authorization: verify, create exactly one M2b.1 commit, push normally to origin/main and verify hosted CI, then stop.
+  Worker/refresh needs separate M2b.2 scope; no new features, dependency changes,
+  live provider calls, frontend, corrective commits or deployment.
 - Adapter AC8/AC10, hosted CI/security-tool/operational gaps remain. Optional Solana,
   polling, credentials, trading and wallet operations remain outside current scope.
 

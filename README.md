@@ -2,14 +2,15 @@
 
 A working one-observation Rust CLI for public cryptocurrency market data, with an accepted future full-stack dashboard architecture. Development uses a human-reviewed, incremental specification-driven workflow with Codex.
 
-## Current phase — M1 CLI and M2a valuation library
+## Current phase — M2b.1 local HTTP foundation
 
-The binary now validates exactly one pair, constructs the existing production
+The CLI invocation validates exactly one pair, constructs the existing production
 adapter and requests one observation. M2a adds a pure portfolio valuation library,
-independent of the CLI. No web server/frontend, persistence, polling or new
-dependency is implemented. Specification 0005 is
-APPROVED and ADR 0003 ACCEPTED for future full-stack architecture; exact package
-versions still require implementation-stage compatibility/security review.
+independent of the CLI. M2b.1 adds a bounded local HTTP/1.1 server and two JSON
+endpoints. Provider refresh, worker integration, frontend, persistence and polling
+remain deferred. Specification 0005 stays APPROVED; the full MVP is incomplete.
+M1/M2a and the narrow M2b.1 implementation are human-accepted. The Product Owner
+authorized one M2b.1 checkpoint commit/push; subsequent features need separate scope.
 
 ## Exact portfolio domain (M2a)
 
@@ -33,14 +34,69 @@ exact final 96-bit coefficient/scale <=28. ArithmeticCapacity and
 UnrepresentableValue are distinct typed errors. The approved conservative
 intermediate limit can reject mathematically representable extreme products.
 No silently rounded monetary result or default missing price is returned.
-No JSON serialization or new CLI portfolio command is implemented.
+The domain itself has no JSON serialization or CLI portfolio command; the HTTP
+boundary serializes its exact Display values.
 See [M2a scope/precision review](docs/specs/0007-exact-portfolio-valuation-domain.md)
 and [deterministic portfolio tests](tests/portfolio.rs).
 
 M2a local verification: all four required Cargo gates pass; 105 tests pass
 (73 unchanged +32 valuation). Tests cover precision failures, half-even allocation,
 quote freshness/incompleteness and bounded inputs with no live network calls.
-M2a review/closure awaits human acceptance.
+M2a was human-accepted before M2b.1; the earlier verification evidence is preserved.
+
+## Run the local API (M2b.1)
+
+From the repository root with the unchanged pinned Rust 1.99.0 toolchain:
+
+```powershell
+cargo run --locked -- --serve
+```
+
+The server listens only on **http://127.0.0.1:3000**. Stop it with Ctrl-C.
+An occupied port fails closed with exit 3 and a static diagnostic. Existing
+`cargo run --locked -- "BTC/USDT"` / `"ETH/USDT"` CLI behavior is preserved.
+The API server constructs no provider transport and never fetches market data.
+Its initial observations remain empty; a positive portfolio is incomplete, while
+zero holdings produce an exact zero total. Fresh prices are injected only in tests.
+There is no browser UI or refresh endpoint in this milestone.
+
+In another PowerShell terminal:
+
+```powershell
+$dashboard = Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/v1/dashboard'
+$payload = @{
+    snapshot_id = $dashboard.snapshot_id
+    quantities = @{ BTC = '0'; ETH = '0' }
+} | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/api/v1/valuation' -ContentType 'application/json' -Headers @{ Origin = 'http://127.0.0.1:3000' } -Body $payload
+```
+
+GET returns schema version 1, an opaque run-scoped snapshot ID, and exactly BTC/ETH
+entries with null observations/timestamps and `not_attempted`. POST accepts only
+that snapshot ID and both quantity strings; zero holdings return `state: complete`,
+`total: "0"` and null allocations. Positive missing/stale quotes return incomplete
+with null total; mismatched IDs return 409. Monetary values are always strings.
+See [0005 contracts and M2b.1 evidence](docs/specs/0005-freelance-portfolio-mvp.md).
+
+Host must be exactly `127.0.0.1:3000`; POST requires Origin
+`http://127.0.0.1:3000`. GET may omit Origin. `localhost` aliases and the future
+Vite origin are rejected. No CORS permission is emitted. Each connection serves
+one request, then closes. Limits: 32 tracked connections, 8 admitted handlers,
+5 seconds combined header/body reading, 25 seconds handling/response writing,
+4 KiB body, 16 KiB headers/64 fields, 2 KiB target and 32 KiB JSON response.
+Early parser failures and expired budgets close the socket without a response;
+application errors use sanitized JSON. Every emitted response has `no-store`.
+`ready` describes the API process, not provider availability; cooldown `"0"`
+does not enable the absent refresh route. Loopback/Host/Origin checks provide no
+authentication against local processes.
+
+Windows verification: all four Cargo gates passed, **137 tests passed**
+(105 preserved +30 HTTP +2 executable startup). Controlled-clock tests exercise
+actual loopback connections; the actual `--serve` binary also passed a loopback
+smoke check. Final checkpoint verification reproduced all four gates/137 tests.
+No live provider calls were made. Hosted results for the checkpoint are verified
+after publication and reported separately; no hosted success is inferred here.
+OS-enforced outbound network denial and actual OS Ctrl-C behavior remain unverified.
 
 ## Run the CLI
 
@@ -101,7 +157,7 @@ cargo test --locked --offline --test cli
 Cargo offline mode is not OS network isolation. Tests do not establish live
 provider availability, real TLS/deadline behavior or Linux execution.
 See [CLI specification 0006](docs/specs/0006-read-only-cli.md) and
-[CLI acceptance tests](tests/cli.rs). M1 review/closure awaits human acceptance.
+[CLI acceptance tests](tests/cli.rs). M1 is human-accepted with limitations.
 
 ## Historical adapter checkpoint (before M1)
 Foundation phases 0.1a–0.1d are implemented and previously accepted by the human. The initial Git baseline is published and all four hosted Cargo gates passed. Phase 0.2b records the approved Market Data Adapter architecture. Phase 0.2c implements validated Pair, Price, TimeoutConfig, and domain errors with deterministic tests and was conditionally accepted by the Technical Lead. The single package now includes a library target for domain tests; the binary entry point remains empty. Phase 0.2d adds offline Binance ticker normalization, PriceObservation, provider identity, and an injectable observation clock, accepted by the Technical Lead. Direct dependencies are rust_decimal 1.43.0 (std), serde 1.0.229 (std/derive), and serde_json 1.0.154 (std), with default features disabled. Phase 0.2e adds single-attempt fetch orchestration with a scripted fake transport, published at af007d861839d51a67724ad6f47d584c8dca9958 with all four hosted gates passing. Phase 0.2f adds reqwest 0.13.5 (blocking/rustls, default features disabled), a reusable fixed-destination HTTP client, bounded streaming reads and 14 offline transport tests, pending human review. Phase 0.2g adds three focused integration tests (60 total) and recommends ACCEPT WITH LIMITATIONS, pending human review. The final Phase 0.2 local review retains ACCEPT WITH LIMITATIONS: all four gates and 60 tests pass, and verified cargo-audit/Gitleaks evidence reports no findings. OS-enforced network isolation evidence and human acceptance of specification closure remain outstanding. Application integration remains deferred. Rust 1.99.0 remains pinned.

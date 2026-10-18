@@ -48,6 +48,13 @@ to a working one-observation synchronous CLI, recorded in
 Later full-stack steps and supporting dependency/security review remain separately
 authorized work; no web install/code, live checks, commits or publication in M1.
 
+M2b.1 update (2026-10-18): M1/M2a are accepted. The Product Owner authorized
+reviewed exact HTTP dependencies and a bounded local dashboard/valuation API.
+Implementation passes Windows Cargo gates/137 tests and is human-accepted at
+the M2b.1 Git checkpoint request; only one commit/push is authorized.
+Provider worker/refresh (M2b.2), frontend and portfolio release remain deferred;
+[0005 evidence](specs/0005-freelance-portfolio-mvp.md) records scope and limitations.
+
 ## Project A — Rust Crypto Monitor
 
 An off-chain Rust engineering portfolio project in this repository. Demonstrate

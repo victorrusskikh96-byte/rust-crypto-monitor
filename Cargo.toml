@@ -8,3 +8,7 @@ rust_decimal = { version = "=1.43.0", default-features = false, features = ["std
 serde = { version = "=1.0.229", default-features = false, features = ["std", "derive"] }
 serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
 reqwest = { version = "=0.13.5", default-features = false, features = ["blocking", "rustls"] }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+tokio = { version = "=1.53.3", default-features = false, features = ["rt", "net", "sync", "time", "signal", "macros"] }
+hyper = { version = "=1.12.0", default-features = false, features = ["server", "http1"] }
+hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio", "server", "http1", "service"] }

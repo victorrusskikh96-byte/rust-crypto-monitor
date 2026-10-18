@@ -124,4 +124,6 @@ dependency compatibility/security review and implementation authorization.
   Future handlers must use server-held observations/monotonic ages, not user prices.
 - No new dependency/advisory scan; historical scanner evidence is not renewed.
   No HTTP/JSON/CLI portfolio integration or full-stack completion is claimed.
-  Human acceptance of M2a remains pending; 0007 stays APPROVED, not IMPLEMENTED.
+  Human acceptance was pending at that checkpoint; the subsequent M2b.1 request
+  records M2a as accepted. This historical evidence does not mark the Full-Stack
+  MVP implemented; 0007 retains its approved specification status.

@@ -7,8 +7,9 @@ architectural conflict: existing adapter preserved; future Axum/Tokio +
 React/TypeScript/Vite and one bounded transport-owning worker accepted.
 Exact dependency versions remain candidates requiring implementation-stage
 compatibility/security verification. Approval does not mean implementation or
-portfolio readiness. Current authorized work is only the read-only CLI in
-[0006](0006-read-only-cli.md); web/frontend/valuation implementation is not authorized.
+portfolio readiness. At M1 approval, authorized work was only the CLI in [0006](0006-read-only-cli.md).
+M2a and the M2b.1 slice below were separately authorized afterward; the complete
+Full-Stack MVP remains unimplemented.
 M0/M0.1 DRAFT history is preserved below as planning evidence.
 
 ## Problem, product objective and target audience
@@ -587,3 +588,154 @@ implementation-stage compatibility/security verification before adoption.
 These are explicit implementation gates, not unresolved architecture alternatives.
 No packages are approved for installation by M1. Each future implementation
 milestone and eventual publication still requires its own authorization.
+
+
+## M2b.1 — Local HTTP foundation evidence (2026-10-18)
+
+**M2b.1 is human-accepted at the Product Owner's Git checkpoint request.**
+The full API/MVP remains incomplete; publication and hosted verification are separate.
+The resumed M2b.1 request explicitly authorizes this slice and exact dependencies.
+M1/M2a acceptance supersedes older pending-review snapshots. Historical no-web-install
+scope is superseded for M2b.1 only; this specification/full API/MVP is not IMPLEMENTED.
+
+Plan executed: preserve CLI/domain; resolve/review approved dependencies; establish
+failing acceptance tests; add immutable two-market state, JSON boundary and bounded
+HTTP/1 connection handling; verify and document. No provider refresh, worker or UI.
+New boundaries: untrusted HTTP headers/body -> DTOs and server observations -> exact
+valuation. Threats: DNS rebinding, foreign-origin requests, client price/freshness
+injection, resource abuse, precision loss and error disclosure. Server ownership,
+strict bounded validation, exact domain arithmetic and fail-closed admission are
+mandatory controls; these are implemented/tested below.
+
+### Dependencies and supply-chain review
+
+All direct additions have exact versions and default-features=false:
+
+| Package | Requested features | Declared MSRV / license |
+| --- | --- | --- |
+| axum 0.8.9 | http1, json, tokio | 1.80 / MIT |
+| tokio 1.53.3 | rt, net, sync, time, signal, macros | 1.71 / MIT |
+| hyper 1.12.0 | server, http1 | 1.63 / MIT |
+| hyper-util 0.1.21 | tokio, server, http1, service | 1.85 / MIT |
+
+Hyper helpers are necessary for accept/parser controls absent from Axum's serve
+helper. Cargo fetch/locked metadata show 185 -> 194 packages: axum 0.8.9,
+axum-core 0.5.6, errno 0.3.14, httpdate 1.0.3, matchit 0.8.4, mime 0.3.17,
+serde_path_to_error 0.1.20, signal-hook-registry 1.4.8, tokio-macros 2.7.2 added.
+No pre-existing package version was removed/changed; Tokio stays 1.53.3. Registry
+checksums are locked; Axum archive/tag correspondence was verified in the preceding
+evaluation. Installed manifests, license files and relevant server/body/runtime
+sources were inspected; no complete line-by-line source audit is claimed.
+
+New licenses are MIT or MIT/Apache-2.0 alternatives except matchit: MIT AND
+BSD-3-Clause, including LICENSE.httprouter. New declared MSRVs are <=1.80;
+matchit/mime declare none. Rust 1.99.0 Windows compilation passed. Selected
+net/signal dependencies support Windows/Unix; Linux execution is unverified.
+No new build.rs/native C build was added. tokio-macros is a proc macro using
+already locked helpers; existing AWS-LC/native/platform versions remain unchanged.
+
+Feature unification: reqwest keeps blocking/rustls; Hyper keeps client/http1 and
+adds server; hyper-util adds server/service. Tokio adds signal/macros to existing
+io-util/bytes/net/rt/sync/time, without full, rt-multi-thread or test-util.
+serde_json unifies std/default with raw_value via Axum; its existing build script
+remains. Unified transitive defaults are not direct default-feature requests.
+HTTP/2 and WebSockets are not enabled. Reproduce with cargo metadata --locked
+--offline --format-version 1 and cargo tree --locked --offline -e features.
+
+Fresh cargo-audit 0.22.2 (binary SHA-256 matched the previously verified
+BB19A80ED88307CFB406739D7BE9545985F1D809651818247C2108D25E544114) returned exit 0:
+194 packages, zero vulnerabilities/warnings. Command: audit --file Cargo.lock
+--db <temporary-dir>/advisory-db --url https://github.com/RustSec/advisory-db.git
+--deny warnings --json. No ignores, severity/target filters, stale/no-fetch/no-yanked
+bypass. RustSec: 1,338 advisories, revision
+999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b, updated 2026-10-17T15:23:59Z.
+Report: local temporary rust-crypto-m2b1-review/audit.json, outside the repository.
+Results are snapshot-limited; security CI/update monitoring are not implemented.
+
+### Endpoints, security and deterministic evidence
+
+[src/http](../../src/http/mod.rs) exposes one run entrypoint. `--serve` uses a
+current-thread runtime/blocking-pool ceiling one and exactly 127.0.0.1:3000.
+Production state is empty/immutable, mode real; fixtures/gates are test-only.
+No provider client can be constructed through the HTTP module. GET returns the
+approved complete dashboard shape/two markets with recomputed monotonic ages.
+POST accepts exactly bounded snapshot_id and BTC/ETH strings; unchanged Portfolio
+code produces exact canonical monetary strings, incomplete/null totals and
+half-even allocation. Mismatched IDs return 409 without substituting prices;
+expired prices invalidate valuation even if ID is unchanged. IDs are run-local,
+printable ASCII <=128 bytes, not authentication tokens. Unix milliseconds use
+integer floor conversion, including before epoch.
+
+| Control | Enforcement and evidence |
+| --- | --- |
+| 32 tracked connections | Bounded JoinSet and nonwaiting permit before spawn; actual 33rd socket closes. Completed tasks reaped; permits recover after timeout; shutdown collects all tasks. |
+| 8 active handlers | Nonwaiting admission covers body read/calculation; 8 incomplete requests hold slots, ninth gets safe 503, no waiting queue. |
+| Headers/target | Hyper caps 64 fields, 16 KiB header/start-line/trailer bytes and 16 KiB parser buffer; target <=2 KiB. Exact/excess boundary socket tests pass. |
+| Body/response | <=4 KiB body data including chunked input, independent of Content-Length; bounded frame collector uses Hyper Body API, no custom HTTP parser. Response <=32 KiB with static 500 fallback. |
+| Deadlines | One scoped 5-second monotonic header/body budget from acceptance, then 25 seconds for handling/response writing; controlled clock/gate tests cover expiry and simultaneous completion precedence. No timer/handler task per request. |
+| Host/Origin/CORS | Exact configured Host/Origin, duplicates/null/missing/foreign rejection, no forwarding-header trust; GET may omit Origin, POST requires it. No CORS permission emitted; only production origin enabled. |
+| Input | Strict JSON keys/types, unknown/duplicate/missing fields rejected; no client prices/ages/freshness, query or nonempty GET body. JSON Content-Type with optional UTF-8 charset only; content encodings rejected. |
+| Errors/headers | Static 400/403/404/405/409/413/415/422/500/503 envelopes; every emitted response has no-store, nosniff, no-referrer and restrictive JSON CSP. Early parser failures close before any framework response through a write-permission IO adapter that parses no protocol bytes. Timeouts close too. |
+| Shutdown | Ctrl-C stops acceptance/admission, stopping POSTs get 503 when readable, <=25-second drain; controlled test proves all connection tasks and permits collected. |
+| Egress/privacy | No refresh route, worker, provider transport, arbitrary outbound URLs, credentials or request logs; repeated GET/valuation leave state untouched. No OS-enforced egress denial is claimed. |
+
+Keepalive is disabled: one request per socket, no indefinite idle holders. HTTP/2,
+upgrades, Expect/100-continue and streaming are rejected/disabled. Early malformed
+HTTP, parser overlimits and expired budgets close without a response. API ready
+means process readiness, not provider availability. refresh_allowed_in_ms "0"
+records no cooldown; it does not enable the absent refresh endpoint. Vite/dev mode
+and static frontend assets remain deferred.
+
+### Executed verification and remaining work
+
+- Baseline: four exact Cargo gates, 105 tests passed at clean main
+  1d43a876e06fcfdcfc026ee3c6faec153a86febe.
+- TDD: acceptance suite first failed with missing module E0583. Additional tests
+  reproduced wrong deadline/completion precedence, malformed chunk 413 classification
+  and pre-epoch millisecond truncation; fixes made all pass.
+- Final Windows gates passed: cargo fmt --all -- --check; cargo clippy --locked
+  --all-targets --all-features -- -D warnings; cargo build --locked --all-targets
+  --all-features; cargo test --locked --all-features.
+- 137 passed, zero failed/ignored: 105 preserved +30 HTTP unit/network +2 executable
+  startup/dispatch. Golden 11500.01200002/tiny exact strings, missing/stale/zero,
+  distinct 422 errors, snapshot conflicts, malformed input, sanitization and limits.
+- Actual debug binary --serve smoke passed: dashboard 200/empty, valuation 200/total
+  "0", foreign Origin 403. The owned smoke process was terminated for cleanup;
+  that is not an OS Ctrl-C test.
+- Market-data core, portfolio, CLI runner/prior tests, fixtures, toolchain, CI and
+  accepted ADRs preserved; only main dispatch extended. No live Binance request,
+  staging/commit/push, deployment, frontend or worker integration occurred.
+- Linux runtime, hosted CI for this uncommitted work, OS network isolation,
+  hostile-local-process protection, whole-process memory/load guarantees and
+  unknown-vulnerability freedom remain unverified. Deadlines are cooperative,
+  subject to OS scheduling; synchronous financial computation is bounded.
+
+After review/acceptance, M2b.2 needs separately approved tests/implementation for
+the transport-owning worker, mutable snapshot state machine, explicit refresh,
+cooldown, cancellation and shutdown. Preserve the implemented security limits.
+
+Additional local security evidence: Gitleaks 8.30.1 executable SHA-256 matched
+17157E2EE8B76FC8B1D8BEE607A250E34B8A8023C8BC81822D4B5EE4D78FCB7C.
+A temporary 42-file tracked/nonignored-untracked snapshot returned exit 0, zero
+findings, embedded default rules, full redaction, no baseline/ignore exceptions
+and source allow-comments disabled. Ignored target/.git and history were excluded;
+no history rescan or external upload. This precedes this scanner-summary paragraph.
+Reports remain outside the repository in rust-crypto-m2b1-secrets-ezvy90cf.
+
+
+### Accepted M2b.1 Git checkpoint (2026-10-18)
+
+The Product Owner accepted this narrow HTTP foundation and authorized exactly one
+commit (`feat: add secure local rust http api foundation`), a normal non-force
+push to origin/main and hosted CI verification for that exact resulting SHA.
+Pre-commit recovery confirmed main, local origin/main and remote origin/main all
+at 1d43a876e06fcfdcfc026ee3c6faec153a86febe; the index was empty and only the
+12 reviewed M2b.1 files were pending. No source/dependency/test changes were made
+during checkpoint review. The final Windows four Cargo gates were rerun and
+passed with 137 tests, zero failed/ignored. Existing scanner binaries were
+integrity-checked; checkpoint scan results and the final hosted conclusion are
+reported in the checkpoint response, not inferred from historical evidence above.
+The earlier uncommitted/pending-review/local-only statements record implementation
+phase evidence. This authorization supersedes their publication restriction for
+this one checkpoint only. No full-specification IMPLEMENTED status, M2b.2 work,
+new package, CI change, live provider call or deployment is authorized.

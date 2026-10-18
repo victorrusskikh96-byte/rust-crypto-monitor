@@ -28,8 +28,19 @@ fn fetch_production(pair: Pair) -> Result<PriceObservation, MarketDataError> {
 }
 
 fn main() -> ExitCode {
+    let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    if arguments.len() == 1 && arguments[0] == "--serve" {
+        return match rust_crypto_monitor::http::run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_) => {
+                use std::io::Write;
+                let _ = writeln!(io::stderr().lock(), "error: local API server failed");
+                ExitCode::from(3)
+            }
+        };
+    }
     ExitCode::from(cli::run(
-        std::env::args_os().skip(1),
+        arguments,
         fetch_production,
         &mut io::stdout().lock(),
         &mut io::stderr().lock(),
