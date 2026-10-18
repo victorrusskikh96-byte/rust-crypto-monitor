@@ -27,6 +27,9 @@ impl ManualTime {
     }
 }
 impl TimeSource for ManualTime {
+    fn wall_now(&self) -> SystemTime {
+        UNIX_EPOCH + Duration::from_millis(1792195200000 + self.millis.load(Ordering::SeqCst))
+    }
     fn now(&self) -> Instant {
         self.base + Duration::from_millis(self.millis.load(Ordering::SeqCst))
     }
@@ -62,7 +65,7 @@ impl Harness {
         let clock = ManualTime::new();
         let mut app = App::new(address.to_string(), clock.clone());
         if fixture {
-            app.snapshot.mode = "fixture";
+            app.snapshot.get_mut().unwrap().mode = "fixture";
             for (slot, pair, price) in [
                 (0, Pair::BtcUsdt, "65000.12"),
                 (1, Pair::EthUsdt, "2500.00000001"),
@@ -73,13 +76,14 @@ impl Harness {
                     provider: crate::market_data::types::Provider::Binance,
                     received_at: std::time::UNIX_EPOCH + Duration::from_millis(1792195200000),
                 };
-                app.snapshot.markets[slot] = Market {
+                app.snapshot.get_mut().unwrap().markets[slot] = Market {
                     observation: Some(TimedObservation {
                         observation,
                         received: clock.now(),
                     }),
                     last_attempt_at: Some(observation.received_at),
                     last_error: None,
+                    loading: false,
                 };
             }
         }
@@ -117,7 +121,7 @@ impl Harness {
         )
     }
     fn valuation(&self, btc: &str, eth: &str) -> String {
-        json!({"snapshot_id":self.app.snapshot.id,"quantities":{"BTC":btc,"ETH":eth}}).to_string()
+        json!({"snapshot_id":self.app.state().id,"quantities":{"BTC":btc,"ETH":eth}}).to_string()
     }
     async fn api(&self, method: &str, path: &str, body: &str) -> (u16, Value) {
         decode(&self.exchange(&self.request(method, path, body)).await)
@@ -196,7 +200,7 @@ async fn initial_dashboard_has_exact_empty_contract_and_no_provider_state_change
     assert_eq!(
         dashboard,
         json!({
-        "schema_version":1,"mode":"real","snapshot_id":s.app.snapshot.id,
+        "schema_version":1,"mode":"real","snapshot_id":s.app.state().id,
         "freshness_ttl_ms":"60000","refresh_in_progress":false,"service_state":"ready",
         "service_error":null,"refresh_allowed_in_ms":"0",
         "markets":[
@@ -211,7 +215,7 @@ async fn initial_dashboard_has_exact_empty_contract_and_no_provider_state_change
         assert_eq!(value["state"], "incomplete");
         assert_eq!(s.api("GET", "/api/v1/dashboard", "").await.1, dashboard);
     }
-    assert_eq!(s.api("POST", "/api/v1/refresh", "{}").await.0, 404);
+    assert_eq!(s.api("POST", "/api/v1/refresh", "{}").await.0, 503);
     s.stop().await;
 }
 #[tokio::test(flavor = "current_thread")]
@@ -244,7 +248,7 @@ async fn fixture_valuation_preserves_all_decimal_digits_and_contract() {
     assert_eq!(status, 200);
     assert_eq!(
         value,
-        json!({"snapshot_id":s.app.snapshot.id,"quote":"USDT","state":"complete",
+        json!({"snapshot_id":s.app.state().id,"quote":"USDT","state":"complete",
         "holdings":[
         {"asset":"BTC","quantity":"0.1","price":"65000.12","value":"6500.012","allocation_pct":"56.52","reason":null},
         {"asset":"ETH","quantity":"2","price":"2500.00000001","value":"5000.00000002","allocation_pct":"43.48","reason":null}],
@@ -281,7 +285,7 @@ async fn freshness_boundary_uses_server_monotonic_age_not_snapshot_id_or_wall_ti
         assert!(holding["allocation_pct"].is_null());
     }
     let (_, dashboard) = s.api("GET", "/api/v1/dashboard", "").await;
-    assert_eq!(dashboard["snapshot_id"], s.app.snapshot.id);
+    assert_eq!(dashboard["snapshot_id"], s.app.state().id);
     assert_eq!(dashboard["markets"][0]["state"], "stale");
     s.stop().await;
 }
@@ -322,7 +326,7 @@ async fn invalid_quantities_are_sanitized_with_allowlisted_field_names() {
 async fn strict_json_rejects_unknown_duplicate_missing_and_client_market_fields() {
     let s = Harness::new(false, false).await;
     let valid = s.valuation("1", "2");
-    let id = &s.app.snapshot.id;
+    let id = s.app.state().id.clone();
     let cases = [
         "{".into(),
         "[]".into(),
@@ -616,7 +620,7 @@ fn bounded_responses_and_internal_errors_are_sanitized() {
 async fn missing_one_quote_preserves_fresh_holding_without_presenting_partial_total() {
     for missing in [0, 1] {
         let s = Harness::configured(true, false, |app| {
-            app.snapshot.markets[missing] = Market::default()
+            app.snapshot.get_mut().unwrap().markets[missing] = Market::default()
         })
         .await;
         let (_, value) = s
@@ -660,7 +664,7 @@ async fn exact_financial_errors_map_to_distinct_422_codes() {
         ),
     ] {
         let s = Harness::configured(true, false, |app| {
-            app.snapshot.markets[0]
+            app.snapshot.get_mut().unwrap().markets[0]
                 .observation
                 .as_mut()
                 .unwrap()
@@ -680,7 +684,7 @@ async fn exact_financial_errors_map_to_distinct_422_codes() {
 #[tokio::test(flavor = "current_thread")]
 async fn minimum_exact_monetary_scale_serializes_as_plain_string() {
     let s = Harness::configured(true, false, |app| {
-        app.snapshot.markets[0]
+        app.snapshot.get_mut().unwrap().markets[0]
             .observation
             .as_mut()
             .unwrap()
@@ -698,7 +702,7 @@ async fn minimum_exact_monetary_scale_serializes_as_plain_string() {
 #[tokio::test(flavor = "current_thread")]
 async fn internal_quote_invariant_failure_returns_no_input_or_internal_details() {
     let s = Harness::configured(true, false, |app| {
-        app.snapshot.markets[0]
+        app.snapshot.get_mut().unwrap().markets[0]
             .observation
             .as_mut()
             .unwrap()
@@ -864,3 +868,6 @@ async fn shutdown_stops_acceptance_and_finishes_bounded_drain_without_detached_t
     assert_eq!(s.app.handlers.available_permits(), 8);
     assert!(TcpStream::connect(s.address).await.is_err());
 }
+
+#[path = "worker_tests.rs"]
+mod worker_tests;

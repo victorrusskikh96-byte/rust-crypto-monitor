@@ -1,6 +1,6 @@
 # Rust Crypto Monitor — Project Context
 
-Snapshot: 2026-10-18 (M2b.1 local HTTP accepted; Git checkpoint authorized). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization.
+Snapshot: 2026-10-18 (M2b.2 locally verified; one Git checkpoint authorized; independent review pending). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization.
 
 Evidence labels:
 - **VERIFIED** — confirmed by inspected artifacts or executed checks; scope is stated.
@@ -14,8 +14,8 @@ Evidence labels:
 - Original purpose: a planned long-running CLI monitoring service.
 - Product Owner-approved direction: a demonstrable Full-Stack Crypto Market &
   Portfolio Dashboard for international Upwork clients; future architecture accepted,
-  current code has the synchronous CLI, pure valuation and bounded local HTTP API;
-  refresh/worker/frontend remain deferred.
+  current code has the synchronous CLI, pure valuation and bounded local HTTP API
+  with explicit worker refresh. Frontend remains deferred.
 - Target users: portfolio reviewers and users manually estimating BTC/ETH holdings.
 - Current MVP slice: one read-only latest-price observation for BTC/USDT or ETH/USDT
   through Binance; continuous monitoring is not implemented.
@@ -57,7 +57,14 @@ Evidence labels:
 - One Rust package, edition 2024, pinned Rust 1.99.0; Windows PowerShell development.
 - [src/main.rs](../src/main.rs) wires a synchronous one-observation CLI through
   [cli.rs](../src/cli.rs); [library](../src/lib.rs) exposes cli, market_data, portfolio and http.
-- [HTTP](../src/http/mod.rs): --serve, IPv4 loopback:3000, dashboard/valuation only; current-thread runtime and bounded resources/deadlines. Empty immutable state, test-only fixtures, no provider capability.
+- [HTTP](../src/http/mod.rs): --serve, IPv4 loopback:3000, dashboard/valuation/refresh;
+  current-thread runtime, 32 connections/8 handlers, bounded bodies and deadlines.
+  Mutable two-market snapshot; initial GET/valuation never fetch.
+- [Worker](../src/http/worker.rs): one thread constructs/uses/drops blocking transport
+  outside Tokio; capacity-one channel and single admission, BTC then ETH, no retries.
+  Monotonic 30-second starts/60-second freshness, conservative 418/429 cooldown;
+  disconnect/HTTP timeout retain admission. Runtime shutdown precedes worker join.
+  Valuation copies one generation and excludes stale prices; fixture seams test-only.
 - CLI validates one canonical OS argument before constructing production transport;
   stdout has exact price/USDT/provider and signed UTC Unix-seconds observation time.
   Exit codes: 0 success, 2 usage, 3 fetch/domain, 4 output. No new dependencies.
@@ -101,61 +108,39 @@ Evidence labels:
 | M0 / M0.1 | Freelance dashboard planning/refinement | APPROVED specification / ACCEPTED ADR through M1 review | [0005](specs/0005-freelance-portfolio-mvp.md), [ADR 0003](adr/0003-full-stack-portfolio-architecture.md) | Future Option B accepted; exact versions require compatibility/security review; no web implementation |
 | M1 CLI | One observation using existing adapter | Human-accepted with limitations at M2a request | [0006](specs/0006-read-only-cli.md), [tests](../tests/cli.rs) | 73-test baseline reproduced; current hosted CI/Linux/isolation gaps remain |
 | M2a | Pure exact portfolio valuation | Human-accepted before M2b.1 | [0007](specs/0007-exact-portfolio-valuation-domain.md), [tests](../tests/portfolio.rs) | No HTTP/serialization; caller supplies monotonic freshness metadata; conservative arithmetic capacity |
-| M2b.1 | Local HTTP dashboard/valuation foundation | Human-accepted; final local 137-test verification reproduced | [0005 evidence](specs/0005-freelance-portfolio-mvp.md), [HTTP tests](../src/http/tests.rs) | No worker/refresh, frontend, Linux or hosted verification for these changes |
+| M2b.1 | Local HTTP foundation | Human-accepted; published checkpoint matches Git | [0005 evidence](specs/0005-freelance-portfolio-mvp.md), [HTTP tests](../src/http/tests.rs) | Historical 137-test baseline; Linux/operational gaps preserved |
+| M2b.2 | Bounded worker, refresh and state | VERIFIED locally; human acceptance pending | [Worker tests](../src/http/worker_tests.rs), 0005 evidence | 156 tests/four gates; no frontend, live calls, Linux or hosted verification |
 | Context v1 / W3.0 | Recovery entrypoint / career direction | VERIFIED: context v1 committed; W3.0 documentation prepared | Git and this file; portfolio roadmap | W3.0 accepted by human at consolidated checkpoint; no implementation authorization |
 
 ## 5. Current Repository State
 
-M2b.1 checkpoint (2026-10-18): base `1d43a876e06fcfdcfc026ee3c6faec153a86febe`; hosted run 39040626584 verified for that older SHA. Product Owner accepted M2b.1 and authorized one commit/non-force push. Resolve the checkpoint SHA from Git and verify its hosted result separately.
-Baseline 105/four gates reproduced; checkpoint rerun passes all four gates/137 tests (105 +30 HTTP +2 startup). Actual binary loopback smoke passed. Nine packages added; no prior version changes.
-Fresh cargo-audit 0.22.2: 194 packages/zero findings, DB 999ec89d updated 2026-10-17. See 0005 for scope/features/security/TDD/limits. No provider request. These are pre-publication checks, not hosted checkpoint results; historical snapshots follow.
+**VERIFIED** M2b.2 recovery: clean main at the requested published checkpoint
+`2a0881770356ebdb8791803364e9aec91eac1a72`; local origin/main matches.
+The 137-test baseline was reproduced before editing. Remote freshness/hosted CI
+was not revalidated; no hosted success for this uncommitted work is inferred.
 
-**VERIFIED** at W3.0 recovery on 2026-10-16:
+**VERIFIED** M2b.2 Windows: all four exact Cargo gates passed; 156 tests passed,
+zero failed/ignored (137 preserved +19 worker/state tests). Initial tests failed
+on missing worker/state APIs. An adversarial test caught Serde accepting [] for
+an empty struct; final refresh validation requires an actual empty JSON object.
+Synchronization gates cover disconnect, 504 with continuing work, shutdown before
+calls/between pairs, initialization errors/panic, dispatch failure and worker death.
+Core adapter, pure portfolio, CLI, prior external tests, manifest/lock, toolchain,
+CI and accepted ADRs are unchanged. Changes are uncommitted; index is unchanged.
+No provider call, automatic polling, frontend, commit, push or deployment.
 
-- Branch: main; local origin/main points to HEAD. Remote freshness is unverified.
-- Latest committed SHA: `7238c3e0fa8163a0b71f48a57ed2f4eda8e60305`.
-- Commit subject: `improved feeling of context with chatgpt and codex`.
-- Working tree/index were clean before W3.0. HEAD includes transport, dependencies,
-  tests, security baseline/ADR and context v1 previously described as unpublished.
-  Git inclusion does not establish human acceptance of adapter closure.
-- W3.0 changes only this context and the portfolio roadmap. No source, tests,
-  dependencies, CI, toolchain or accepted decisions are changed.
-- Local W3.0 verification on 2026-10-16: cargo fmt --all -- --check;
-  cargo clippy --locked --all-targets --all-features -- -D warnings;
-  cargo build --locked --all-targets --all-features; cargo test --locked --all-features
-  all passed. Tests: 60 passed, zero failed/ignored. Local links and Git diff checks
-  passed. No live connectivity, OS network isolation or scanner rerun is claimed.
-- Historical hosted evidence for `af007d8`: [run 38678079406](https://github.com/victorrusskikh96-byte/rust-crypto-monitor/actions/runs/38678079406).
-  That result covers the older core checkpoint. Hosted CI for current HEAD has
-  not been revalidated in W3.0; no current hosted success is inferred.
-- No live provider request, installation, commit or push performed in W3.0.
+Fresh integrity-checked cargo-audit 0.22.2: 194 packages, zero vulnerabilities or
+warnings; RustSec 1338 advisories, revision 999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b,
+updated 2026-10-17T15:23:59Z. Secret-scan evidence/limits are in 0005.
+Scanners do not establish runtime isolation or complete dependency/native safety.
 
-M0 recovery on 2026-10-17: Git HEAD is
-`0f95a3cf2fb638df88d382e298fc6364b8867df9`,
-`feat: finalize market data adapter and web3 portfolio foundation`; main tracks
-local origin/main and the working tree/index were clean before M0. This supersedes
-the current-HEAD value in the preserved W3.0 snapshot above; remote freshness and
-current hosted CI are unverified. Source still has an empty binary and no dashboard.
-M0/M0.1 changes only two proposals and this context/roadmap; no application capability
-or dependency is added. Pre-M0 local four-gate verification passed with 60 tests;
-M0 verification is reported in the review response, without inferring hosted success.
-
-M1 recovery: HEAD/local origin/main and read-only git ls-remote origin main all
-match 0f95a3c on 2026-10-17. M0/M0.1's four unpublished documentation files were
-preserved/refined; the index remains unchanged. Current source now includes the CLI
-in 0006; the empty-main statement above is the historical M0 recovery snapshot.
-M1 verification: all four exact Cargo gates passed on Windows, 73 tests passed
-(60 existing +13 CLI), zero failed/ignored. CLI-first test baseline failed on missing
-runner; platform fixtures were corrected to 100 ns SystemTime increments.
-Document links/JSON/status/scope/whitespace checks passed. No provider request,
-dependency change, commit or push performed. Current hosted CI, Linux execution,
-OS network denial and scanner reruns are unverified.
-
-M2a verification on 2026-10-17: baseline 73 tests/four gates reproduced first;
-final four exact gates passed with 105 tests (73 unchanged +32 pure valuation).
-Preservation hashes confirm CLI/core/dependencies/CI/prior tests/0005 unchanged.
-No M2a provider calls, HTTP/JSON, scanner rerun, commits or pushes; review pending.
-M1 is human-accepted with limitations; 0006 records that acceptance.
+Historical verification is retained in the relevant specifications: adapter/W3.0
+60 tests; M1 73; M2a 105; accepted M2b.1 137/four gates and loopback binary smoke.
+The older hosted run 39040626584 covered 1d43a876, not this working tree.
+[0003](specs/0003-market-data-adapter.md), [0006](specs/0006-read-only-cli.md),
+[0007](specs/0007-exact-portfolio-valuation-domain.md) and [0005](specs/0005-freelance-portfolio-mvp.md)
+retain scope, prior acceptance and operational limitations; no historical result
+is promoted to current proof. W3.0 and M1/M2a/M2b.1 are human-accepted.
 
 ## 6. Architecture Decisions
 
@@ -198,7 +183,9 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
   M2a). This proves one observation only. DNS/TLS rejection, repeatable availability,
   regional coverage, wire behavior and elapsed deadlines remain unverified; configured timeouts are not hard real-time.
 - Body cap bounds application-consumed bytes, not every HTTP/kernel buffer.
-- Blocking transport must be created/used/dropped outside an async runtime.
+- Blocking transport is owned outside Tokio. Worker join has no hard deadline
+  across OS/DNS operations; actual OS Ctrl-C remains unverified.
+- Production fixture mode, dev Origin/Vite proxy and static assets remain deferred.
 - Hosted Ubuntu transport/scanner execution, confidential vulnerability intake,
   security CI, dependency monitoring and operational isolation remain incomplete.
 - **REPORTED:** cargo-audit 0.22.2 scanned 185 packages with zero advisories/warnings;
@@ -220,9 +207,13 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
   implementation, CI changes or new repository creation.
 - **VERIFIED:** Git now contains the adapter/security checkpoint in HEAD. Remaining
   acceptance and verification gaps are not closed merely because it was committed.
-- M1/M2a/M2b.1 are accepted. Current authorization: verify, create exactly one M2b.1 commit, push normally to origin/main and verify hosted CI, then stop.
-  Worker/refresh needs separate M2b.2 scope; no new features, dependency changes,
-  live provider calls, frontend, corrective commits or deployment.
+- Current authorization: final M2b.2 verification, exactly one commit named
+  feat: integrate bounded market refresh worker, one normal push to origin/main,
+  and hosted CI verification for that exact SHA; then stop for Technical Lead review.
+  Base: 2a0881770356ebdb8791803364e9aec91eac1a72. No further commits, source features,
+  dependencies, live provider smoke, frontend, fixture mode or deployment.
+  Earlier implementation-only restrictions record the pre-checkpoint scope.
+- M3 React Dashboard needs separate scope/approval; no frontend work has started.
 - Adapter AC8/AC10, hosted CI/security-tool/operational gaps remain. Optional Solana,
   polling, credentials, trading and wallet operations remain outside current scope.
 

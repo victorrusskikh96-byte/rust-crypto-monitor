@@ -8,8 +8,10 @@ React/TypeScript/Vite and one bounded transport-owning worker accepted.
 Exact dependency versions remain candidates requiring implementation-stage
 compatibility/security verification. Approval does not mean implementation or
 portfolio readiness. At M1 approval, authorized work was only the CLI in [0006](0006-read-only-cli.md).
-M2a and the M2b.1 slice below were separately authorized afterward; the complete
-Full-Stack MVP remains unimplemented.
+M2a, M2b.1 and M2b.2 were separately authorized afterward. M2b.1 is accepted;
+M2b.2 is locally verified and awaits human review. The complete Full-Stack MVP
+remains unimplemented. Latest evidence below supersedes historical statements
+about absent worker/refresh behavior without erasing their original scope.
 M0/M0.1 DRAFT history is preserved below as planning evidence.
 
 ## Problem, product objective and target audience
@@ -739,3 +741,190 @@ The earlier uncommitted/pending-review/local-only statements record implementati
 phase evidence. This authorization supersedes their publication restriction for
 this one checkpoint only. No full-specification IMPLEMENTED status, M2b.2 work,
 new package, CI change, live provider call or deployment is authorized.
+
+
+## M2b.2 implementation evidence (2026-10-18; review pending)
+
+### Scope, baseline and test-first evidence
+
+The human authorized only the bounded market worker, POST refresh, mutable dashboard
+snapshots and valuation integration. No new dependency, frontend, operational fixture
+startup, polling/retry, live provider request, commit, push, CI change or deployment.
+Status remains APPROVED. M1/M2a/M2b.1 are accepted; M2b.2 acceptance and full release
+criteria remain pending. Historical evidence above retains its original scope.
+
+Recovery matched clean main/local origin/main to
+2a0881770356ebdb8791803364e9aec91eac1a72 and reproduced all 137 baseline tests.
+Relevant 0003/0005/0007, ADRs 0001/0003 and SEC-01–SEC-12 were reviewed. Acceptance
+tests were added first and failed on missing worker/state APIs. A malformed-body
+test exposed Serde accepting [] for an empty struct; final validation requires an
+actual JSON object with zero members. Scalar/null/unknown/duplicate-member inputs
+cannot admit work. Clippy style/test-scope findings were fixed without suppressions.
+All 137 previous tests remain; the old absent-refresh assertion now expects 503
+in its intentionally workerless harness. A Windows documentation encoding mismatch
+was corrected and final documents checked as UTF-8.
+
+### Worker, admission and snapshot ownership
+
+[src/http/worker.rs](../../src/http/worker.rs) owns one named std thread and a
+capacity-one sync_channel. The factory constructs ReqwestTransport on that thread;
+it uses and destroys the client there, including unwinding. No Send/Sync bound was
+added to HttpTransport/Clock. Adapter construction remains local, with unchanged
+defaults/fixed HTTPS destination and no retry. Startup awaits a ready/failed oneshot
+before binding/listening; construction makes no request. Initialization failure
+prevents listening with a static diagnostic.
+
+The existing Snapshot has one short-held std Mutex. It contains the sole command
+sender, admission, cooldown, service health and two fixed market slots. One lock
+covers service/busy/cooldown checks, nonblocking try_send and admission publication.
+The worker cannot start until this lock releases. No second batch can be admitted
+or queued. No per-request thread, blocking runtime send/recv, replacement worker or
+generic executor. Failed dispatch changes service health only; no attempt, quote or
+start cooldown is fabricated. A once-only flag also rejects worker replacement.
+
+Each command owns its bounded completion sender; the HTTP receiver owns no admission
+guard. Actual batch completion or worker-exit cleanup alone releases busy. GET reads
+state during fetches. No state lock covers provider I/O or financial calculation.
+Valuation validates quantities, checks stopping, busy before ID, then copies one
+ID/two markets/monotonic instant and calculates outside the lock. Later refresh
+cannot substitute prices in that response. Valuation never fetches.
+
+Only the pair actually starting receives loading/last_attempt_at_ms. Retained error
+is labeled last_error_is_previous: true while loading; this optional field is absent
+otherwise. Success publishes an actual validated observation/monotonic receipt time
+and clears error. Failure retains the old quote as stale, or remains unavailable
+without a quote. Ordinary failure continues to ETH once; 418/429 stops remaining
+calls with untouched metadata preserved. Worker death finalizes only loading
+attempts as worker_failed, retains old quotes stale, sets service failed and disables
+refresh without respawning. Health describes observed outcomes, not global Binance
+availability. No provider HTTP status is invented for worker failure.
+
+Run-local generation changes under the same lock on admission, actual pair start,
+result, completion and relevant service/worker mutations. GET recalculates age
+without generation mutation. Freshness is age <=60 seconds and latest attempt
+success; failed attempts immediately exclude retained prices. A monotonic high-water
+mark prevents clock regression rejuvenating observations or erasing cooldown.
+State-to-clock lock order is fixed; clock lock never spans acquiring state. Financial
+values, ages and cooldowns remain strings; schema/status metadata use integers.
+
+### Endpoint, rate limits, cancellation and shutdown
+
+- Host/Origin, method/route, media type/body bounds and exact schema validation precede
+  admission. Malformed refresh remains 400 while stopping. Valid admission checks
+  stopping/unavailable, active 409, then cooldown 429.
+- Completed batches return 200 including provider failures. Safe provider codes carry
+  only allowlisted numeric status/parsed Retry-After. No client URL, price or secret
+  enters the worker.
+- Monotonic start spacing is >=30 seconds. 418/429 blocks for max(60 seconds, valid
+  Retry-After) from actual failure, checked against the start deadline too. Missing,
+  zero, invalid or u64-overflow metadata uses the minimum. Seconds that parse but
+  cannot form an Instant deadline disable refresh until restart with service_error
+  cooldown_unrepresentable. Restart is not guidance to evade provider limits.
+- Local 429 emits retry_after_ms and ceil-second Retry-After, never zero while blocked.
+  Busy precedes cooldown; rejected admission changes no provider metadata. This local
+  policy does not establish shared-IP quota compliance.
+- Disconnect/HTTP timeout detach the waiter only. At 25 seconds, refresh can emit
+  504 refresh_wait_timeout if the socket accepts one immediate nonblocking completion
+  poll; otherwise it closes. No additional write budget/timer task. Admission remains
+  busy until actual completion; no retry or cancellation of blocking work.
+- Shutdown atomically stops admission and closes the sole sender; no shutdown command
+  needs queue space. Unstarted work is discarded without attempts. A running call
+  finishes and publishes its actual outcome, then checks stopping before ETH.
+  Waiters can receive 503 service_stopping. The original <=25-second cooperative
+  HTTP drain remains. The synchronous owner drops the application runtime, then
+  joins the worker. OS/DNS can delay joining; no hard worker deadline, forcible
+  cancellation or detached replacement is claimed.
+
+### Deterministic acceptance coverage
+
+[src/http/worker_tests.rs](../../src/http/worker_tests.rs) adds 19 tests. Fake
+transport asserts construction/use/drop on its owner outside Tokio. Synchronization
+gates/oneshots and controlled monotonic/wall clocks replace scheduling sleeps.
+Real five-second test watchdogs detect hangs, not acceptance timing.
+
+| Criterion | Verified backend evidence | Remaining scope |
+| --- | --- | --- |
+| AC13 | Initial GET/valuation zero calls; explicit POST creates one BTC-first/ETH-second batch; exact golden valuation after fake observations | Operational fixture startup/browser workflow deferred |
+| AC14 | Simultaneous socket POSTs admit one; no second batch; invalid schema/Host/Origin/media and cooldown have no provider effects; failed dispatch rolls back | OS/load behavior beyond bounded tests unverified |
+| AC15 | TCP disconnect and controlled 504 retain busy; planned calls complete, no retry, GET exposes results | Browser AbortController integration deferred |
+| AC16 | BTC 418/429 stops ETH; ETH 429 retains BTC; absent/zero/120/u64-overflow/unrepresentable deadlines; exact 29999/30000 and provider cooldown boundaries | Shared-IP/provider quota/live wire behavior unverified |
+| AC17 | Stop before admission, gate before first call, shutdown during BTC/between published BTC and ETH; initialization error/panic, disconnected dispatch, worker panic before/after success; owner destruction and no respawn | Actual OS Ctrl-C and hard DNS/client destruction timing unverified |
+| AC20 backend | 504 versus ongoing work; 503 stopping; prior 32-connection/8-handler/body/header/target/deadline tests preserved; loading/service/error/provenance response decoding | Frontend decoder/browser coverage and full MVP completion deferred |
+
+TTL expiry without generation change, stale IDs, active-refresh valuation rejection,
+every safe MarketDataError code, stale-price exclusion, previous-error labeling and
+clock regression are verified. Existing exact M2a arithmetic and all security/resource
+regression tests still pass. Test seams cannot be selected through production input.
+
+### Verification, security review and limits
+
+All four exact Windows gates executed successfully:
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo build --locked --all-targets --all-features
+cargo test --locked --all-features
+```
+
+156 tests passed, zero failed/ignored: 137 preserved +19 worker/state tests.
+No live Binance requests. Git/source review confirms adapter, portfolio, CLI,
+external test suites/fixtures, manifest/lock, CI, toolchain and ADRs unchanged.
+Existing connection/handler/parser/body/response limits remain enforced.
+
+Security review covered HTTP-to-worker/worker-to-snapshot trust boundaries, atomic
+admission, cancellation ownership, lock ordering, bounded commands/tasks, rate-limit
+overflow, safe errors, consistent snapshots and exact arithmetic. No unsafe code,
+credential/configurable-URL path, logs or dependency changes. No new dependency/
+source/feature/MSRV/license/native exposure; existing AWS-LC/native/platform and
+full-source-audit limits remain. Reqwest's private current-thread runtime/resolver
+facilities remain separate from the app current-thread runtime/blocking-pool ceiling
+one. There is no whole-process two-thread claim or claim that the application command
+channel bounds library internal queues/OS buffers. No new unbounded app work exists.
+
+Integrity-checked cargo-audit 0.22.2 returned exit 0 for 194 packages, zero
+vulnerabilities/warnings. Fresh RustSec: 1338 advisories, revision
+999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b, updated 2026-10-17T15:23:59Z;
+no ignores/severity/target filters or stale/no-fetch/no-yanked bypass. Command:
+audit --file Cargo.lock --db <temporary-review>/advisory-db
+--url https://github.com/RustSec/advisory-db.git --deny warnings --json.
+Report: temporary rust-crypto-m2b2-review/audit.json, outside the repository.
+Scanner traffic is not provider traffic. Secret-scan evidence is recorded below.
+
+Remaining limits: no Linux/hosted verification of this uncommitted work, OS-enforced
+external-network denial, live DNS/TLS/provider test, hard OS/DNS shutdown bound,
+actual Ctrl-C test, hostile-local-process authentication, exhaustive source/native
+audit, complete memory/load/security assurance or provider quota guarantee.
+Operational fixture mode, Vite/dev Origin, static assets, frontend and full release
+ACs remain pending. Backend is ready for human M2b.2 review before separately
+authorized M3 React Dashboard work. No milestone closure is inferred.
+
+Additional M2b.2 security evidence: integrity-checked Gitleaks 8.30.1 returned
+exit 0 with zero findings across 44 tracked/nonignored-untracked files, including
+the new worker/tests. A temporary copy outside the repository excluded ignored
+target/.git; embedded default rules, full redaction, empty ignore file, no baseline
+or exceptions, and source allow-comments disabled. History was not rescanned.
+No repository upload or new scanner installation. Report directory: rust-crypto-m2b2-secrets-uminpf2k.
+This scan precedes only this evidence paragraph; source/final implementation was
+included. Pattern scans cannot prove absence of all secrets.
+
+
+### M2b.2 Git checkpoint authorization (2026-10-18)
+
+The Product Owner explicitly authorized final verification, exactly one commit
+with message feat: integrate bounded market refresh worker, one normal non-force
+push to origin/main, and Actions verification for that exact new SHA. Recovery
+confirmed main at 2a0881770356ebdb8791803364e9aec91eac1a72, an empty index and
+only the seven expected M2b.2 files. Final architecture review found no material
+worker/concurrency/financial/shutdown defect requiring implementation changes.
+All four required local Cargo gates were rerun successfully with 156 tests,
+zero failed/ignored. No source, test, dependency, toolchain or CI changes were
+made during this checkpoint review. Fresh scanner results are reported with the
+checkpoint; earlier scanner records retain their original scope and timestamps.
+
+Earlier uncommitted/no-publication statements describe implementation-stage
+evidence; this authorization supersedes that restriction for this one checkpoint.
+The published SHA and exact hosted result are reported after publication, never
+inferred from an older run. Independent Technical Lead review, full-specification
+acceptance and historical operational limitations remain pending. No frontend,
+fixture startup, live provider request, additional commit or deployment is allowed.

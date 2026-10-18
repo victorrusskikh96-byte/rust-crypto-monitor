@@ -1,6 +1,6 @@
-//! Bounded local HTTP boundary. This module has no provider client or fetch capability.
+//! Bounded local HTTP boundary with one explicitly admitted synchronous market worker.
 use crate::{
-    market_data::types::{Pair, PriceObservation},
+    market_data::types::{MarketDataError, Pair, PriceObservation},
     portfolio::{
         HoldingValuation, IncompleteReason, Portfolio, Quantity, Quote, ValuationError,
         ValuationState,
@@ -24,7 +24,7 @@ use std::{
     io,
     pin::Pin,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     task::{Context, Poll},
@@ -45,6 +45,9 @@ const RESPONSE_LIMIT: usize = 32768;
 type SleepFuture<'a> = Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
 trait TimeSource: Send + Sync {
     fn now(&self) -> Instant;
+    fn wall_now(&self) -> SystemTime {
+        SystemTime::now()
+    }
     fn sleep_until(&self, deadline: Instant) -> SleepFuture<'_>;
 }
 struct MonotonicTime;
@@ -67,6 +70,7 @@ struct Market {
     observation: Option<TimedObservation>,
     last_attempt_at: Option<SystemTime>,
     last_error: Option<ApiError>,
+    loading: bool,
 }
 impl Market {
     fn quote(self, now: Instant) -> Option<Quote> {
@@ -75,15 +79,15 @@ impl Market {
                 stored.observation,
                 now.checked_duration_since(stored.received)
                     .unwrap_or(Duration::MAX),
-                self.last_error.is_none() && self.last_attempt_at.is_some(),
+                !self.loading && self.last_error.is_none() && self.last_attempt_at.is_some(),
             )
         })
     }
     fn dashboard(self, pair: Pair, now: Instant, mode: &str) -> Value {
         let quote = self.quote(now);
-        json!({
+        let mut value = json!({
             "pair":pair.to_string(),
-            "state":match quote { None=>"unavailable", Some(q) if q.is_fresh()=>"success", Some(_)=>"stale" },
+            "state":if self.loading { "loading" } else { match quote { None=>"unavailable", Some(q) if q.is_fresh()=>"success", Some(_)=>"stale" } },
             "observation":self.observation.map(|stored| json!({
                 "price":stored.observation.price.to_string(),"quote":"USDT","provider":"Binance",
                 "observed_at_ms":timestamp(stored.observation.received_at),"provenance":mode
@@ -91,24 +95,57 @@ impl Market {
             "observation_age_ms":self.observation.map(|stored| now.checked_duration_since(stored.received).unwrap_or(Duration::MAX).as_millis().to_string()),
             "last_attempt_at_ms":self.last_attempt_at.and_then(timestamp),
             "last_success_at_ms":self.observation.and_then(|stored| timestamp(stored.observation.received_at)),
-            "attempt_state":if self.last_error.is_some() { "failed" } else if self.last_attempt_at.is_some() { "success" } else { "not_attempted" },
+            "attempt_state":if self.loading { "loading" } else if self.last_error.is_some() { "failed" } else if self.last_attempt_at.is_some() { "success" } else { "not_attempted" },
             "last_error":self.last_error.map(ApiError::envelope_value).map(|v|v["error"].clone())
-        })
+        });
+        if self.loading && self.last_error.is_some() {
+            value["last_error_is_previous"] = json!(true);
+        }
+        value
     }
 }
 struct Snapshot {
     id: String,
     mode: &'static str,
     markets: [Market; 2],
+    generation: u128,
+    run_id: u64,
+    busy: bool,
+    next_start: Option<Instant>,
+    service_error: Option<ApiError>,
+    worker_available: bool,
+    worker_started: bool,
+    commands: Option<std::sync::mpsc::SyncSender<worker::Command>>,
+}
+impl Snapshot {
+    fn changed(&mut self) {
+        // Exhaustion would require more mutations than a process can execute.
+        self.generation = self
+            .generation
+            .checked_add(1)
+            .expect("generation exhausted");
+        self.id = format!("{:016x}-{}", self.run_id, self.generation);
+    }
+    fn remaining_ms(&self, now: Instant) -> u128 {
+        self.next_start
+            .and_then(|deadline| deadline.checked_duration_since(now))
+            .map_or(0, |d| d.as_nanos().div_ceil(1_000_000))
+    }
 }
 struct App {
     authority: String,
     origin: String,
-    snapshot: Snapshot,
+    snapshot: Mutex<Snapshot>,
     clock: Arc<dyn TimeSource>,
+    last_now: Mutex<Instant>,
     connections: Arc<Semaphore>,
     handlers: Arc<Semaphore>,
     stopping: AtomicBool,
+    stop_signal: tokio::sync::Notify,
+    #[cfg(test)]
+    worker_changed: tokio::sync::Notify,
+    #[cfg(test)]
+    worker_gates: Mutex<[Option<worker::TestGate>; 2]>,
     #[cfg(test)]
     changed: tokio::sync::Notify,
     #[cfg(test)]
@@ -118,19 +155,35 @@ struct App {
 }
 impl App {
     fn new(authority: String, clock: Arc<dyn TimeSource>) -> Self {
+        let run_id = RandomState::new().hash_one(SystemTime::now());
+        let last_now = Mutex::new(clock.now());
         Self {
             origin: format!("http://{authority}"),
             authority,
-            snapshot: Snapshot {
+            snapshot: Mutex::new(Snapshot {
                 // Run-local generation identity, never an authentication token.
-                id: format!("{:016x}", RandomState::new().hash_one(SystemTime::now())),
+                id: format!("{run_id:016x}-0"),
                 mode: "real",
                 markets: [Market::default(); 2],
-            },
+                generation: 0,
+                run_id,
+                busy: false,
+                next_start: None,
+                service_error: None,
+                worker_available: false,
+                worker_started: false,
+                commands: None,
+            }),
             clock,
+            last_now,
             connections: Arc::new(Semaphore::new(32)),
             handlers: Arc::new(Semaphore::new(8)),
             stopping: AtomicBool::new(false),
+            stop_signal: tokio::sync::Notify::new(),
+            #[cfg(test)]
+            worker_changed: tokio::sync::Notify::new(),
+            #[cfg(test)]
+            worker_gates: Mutex::new([None, None]),
             #[cfg(test)]
             changed: tokio::sync::Notify::new(),
             #[cfg(test)]
@@ -159,15 +212,60 @@ impl App {
             app: self.clone(),
         })
     }
-    fn dashboard(&self) -> Value {
-        let now = self.clock.now();
+    fn now(&self) -> Instant {
+        // A clock anomaly may delay expiry, but can never rejuvenate a quote
+        // or shorten a cooldown after a later instant has already been observed.
+        let mut last = self
+            .last_now
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *last = (*last).max(self.clock.now());
+        *last
+    }
+    fn state(&self) -> std::sync::MutexGuard<'_, Snapshot> {
+        self.snapshot
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+    fn dashboard_locked(&self, state: &Snapshot) -> Value {
+        let now = self.now();
         json!({
-            "schema_version":1,"mode":self.snapshot.mode,"snapshot_id":self.snapshot.id,
-            "freshness_ttl_ms":"60000","refresh_in_progress":false,
-            "service_state":if self.stopping.load(Ordering::Acquire) { "stopping" } else { "ready" },
-            "service_error":null,"refresh_allowed_in_ms":"0",
-            "markets":[self.snapshot.markets[0].dashboard(Pair::BtcUsdt,now,self.snapshot.mode), self.snapshot.markets[1].dashboard(Pair::EthUsdt,now,self.snapshot.mode)]
+            "schema_version":1,"mode":state.mode,"snapshot_id":state.id,
+            "freshness_ttl_ms":"60000","refresh_in_progress":state.busy,
+            "service_state":if self.stopping.load(Ordering::Acquire) { "stopping" }
+                else if state.service_error.is_some() { "failed" } else { "ready" },
+            "service_error":state.service_error.map(|e|e.envelope_value()["error"].clone()),
+            "refresh_allowed_in_ms":state.remaining_ms(now).to_string(),
+            "markets":[state.markets[0].dashboard(Pair::BtcUsdt,now,state.mode), state.markets[1].dashboard(Pair::EthUsdt,now,state.mode)]
         })
+    }
+    fn dashboard(&self) -> Value {
+        self.dashboard_locked(&self.state())
+    }
+    fn stop(&self) {
+        let mut state = self.state();
+        if !self.stopping.swap(true, Ordering::AcqRel) {
+            state.commands.take();
+            state.changed();
+        }
+        drop(state);
+        self.stop_signal.notify_waiters();
+    }
+    async fn refresh(&self, deadline: Instant, waiting: &AtomicBool) -> Result<Value, ApiError> {
+        let completion = self.admit()?;
+        waiting.store(true, Ordering::Release);
+        let stopped = self.stop_signal.notified();
+        tokio::pin!(stopped);
+        stopped.as_mut().enable();
+        if self.stopping.load(Ordering::Acquire) {
+            return Err(ApiError::Stopping);
+        }
+        tokio::select! {
+            biased;
+            _ = stopped => Err(ApiError::Stopping),
+            _ = self.clock.sleep_until(deadline) => Err(ApiError::RefreshTimeout),
+            result = completion => result.unwrap_or(Err(ApiError::WorkerFailed)),
+        }
     }
     fn valuation(&self, request: ValuationRequest) -> Result<Value, ApiError> {
         let btc = request
@@ -180,19 +278,22 @@ impl App {
             .eth
             .parse::<Quantity>()
             .map_err(|_| ApiError::InvalidQuantity("quantities.ETH"))?;
-        if self.stopping.load(Ordering::Acquire) {
-            return Err(ApiError::Stopping);
-        }
-        if request.snapshot_id != self.snapshot.id {
-            return Err(ApiError::SnapshotReplaced);
-        }
-        // Snapshot is immutable in M2b.1. One monotonic instant supplies both ages.
-        let now = self.clock.now();
+        let (snapshot_id, markets, now) = {
+            let state = self.state();
+            if self.stopping.load(Ordering::Acquire) {
+                return Err(ApiError::Stopping);
+            }
+            if state.busy {
+                return Err(ApiError::RefreshInProgress);
+            }
+            if request.snapshot_id != state.id {
+                return Err(ApiError::SnapshotReplaced);
+            }
+            (state.id.clone(), state.markets, self.now())
+        };
+        // Arithmetic uses a consistent copy, without holding the state lock.
         let valuation = Portfolio::new(btc, eth)
-            .value(
-                self.snapshot.markets[0].quote(now),
-                self.snapshot.markets[1].quote(now),
-            )
+            .value(markets[0].quote(now), markets[1].quote(now))
             .map_err(|error| match error {
                 ValuationError::ArithmeticCapacity => ApiError::ArithmeticCapacity,
                 ValuationError::UnrepresentableValue => ApiError::UnrepresentableValue,
@@ -201,7 +302,7 @@ impl App {
                 }
             })?;
         Ok(json!({
-            "snapshot_id":self.snapshot.id,"quote":"USDT",
+            "snapshot_id":snapshot_id,"quote":"USDT",
             "state":match valuation.state() { ValuationState::Complete=>"complete",ValuationState::Incomplete=>"incomplete" },
             "holdings":[holding(valuation.btc(),"BTC"),holding(valuation.eth(),"ETH")],
             "total":valuation.total().map(|total|total.to_string()),
@@ -255,8 +356,15 @@ struct Quantities {
     eth: String,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum ApiError {
+    RefreshInProgress,
+    RefreshCooldown(u128),
+    RefreshTimeout,
+    WorkerUnavailable,
+    WorkerFailed,
+    CooldownUnrepresentable,
+    Provider(MarketDataError),
     InvalidRequest,
     InvalidQuantity(&'static str),
     ForbiddenHost,
@@ -275,6 +383,74 @@ enum ApiError {
 impl ApiError {
     fn details(self) -> (StatusCode, &'static str, &'static str, Option<&'static str>) {
         match self {
+            Self::RefreshInProgress => (
+                StatusCode::CONFLICT,
+                "refresh_in_progress",
+                "Refresh is in progress",
+                None,
+            ),
+            Self::RefreshCooldown(_) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "refresh_cooldown",
+                "Refresh cooldown applies",
+                None,
+            ),
+            Self::RefreshTimeout => (
+                StatusCode::GATEWAY_TIMEOUT,
+                "refresh_wait_timeout",
+                "Refresh waiter timed out; work may continue",
+                None,
+            ),
+            Self::WorkerUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "worker_unavailable",
+                "Market worker is unavailable",
+                None,
+            ),
+            Self::WorkerFailed => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "worker_failed",
+                "Market worker failed",
+                None,
+            ),
+            Self::CooldownUnrepresentable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "cooldown_unrepresentable",
+                "Refresh disabled until restart",
+                None,
+            ),
+            Self::Provider(error) => (
+                StatusCode::OK,
+                match error {
+                    MarketDataError::UnsupportedPair => "unsupported_pair",
+                    MarketDataError::InvalidConfiguration
+                    | MarketDataError::ClientInitialization => "configuration_error",
+                    MarketDataError::Timeout => "provider_timeout",
+                    MarketDataError::Transport => "provider_transport",
+                    MarketDataError::RateLimited { .. } => "provider_rate_limited",
+                    MarketDataError::ProviderUnavailable { .. } => "provider_unavailable",
+                    MarketDataError::HttpStatus { .. } => "provider_http_status",
+                    MarketDataError::ResponseTooLarge => "provider_response_too_large",
+                    MarketDataError::InvalidResponse
+                    | MarketDataError::SymbolMismatch
+                    | MarketDataError::InvalidPrice => "provider_invalid_data",
+                },
+                match error {
+                    MarketDataError::Timeout => "Market data request timed out",
+                    MarketDataError::Transport => "Market data transport failed",
+                    MarketDataError::RateLimited { .. } => "Market data rate limited",
+                    MarketDataError::ProviderUnavailable { .. } => {
+                        "Market data provider unavailable"
+                    }
+                    MarketDataError::HttpStatus { .. } => "Unexpected market data HTTP status",
+                    MarketDataError::ResponseTooLarge => "Market data response too large",
+                    MarketDataError::UnsupportedPair => "Unsupported market pair",
+                    MarketDataError::InvalidConfiguration
+                    | MarketDataError::ClientInitialization => "Market data configuration failed",
+                    _ => "Invalid market data",
+                },
+                None,
+            ),
             Self::InvalidRequest => (
                 StatusCode::BAD_REQUEST,
                 "invalid_request",
@@ -362,10 +538,37 @@ impl ApiError {
         if let Some(field) = field {
             error["field"] = json!(field);
         }
+        match self {
+            Self::RefreshCooldown(ms) => {
+                error["retry_after_ms"] = json!(ms.to_string());
+            }
+            Self::Provider(MarketDataError::RateLimited {
+                status,
+                retry_after,
+            }) => {
+                error["status"] = json!(status);
+                if let Some(retry) = retry_after {
+                    error["retry_after_seconds"] = json!(retry.as_secs().to_string());
+                }
+            }
+            Self::Provider(
+                MarketDataError::ProviderUnavailable { status }
+                | MarketDataError::HttpStatus { status },
+            ) => {
+                error["status"] = json!(status);
+            }
+            _ => {}
+        }
         json!({"error":error})
     }
     fn response(self) -> Response {
-        json_response(self.details().0, &self.envelope_value())
+        let mut response = json_response(self.details().0, &self.envelope_value());
+        if let Self::RefreshCooldown(ms) = self
+            && let Ok(value) = header::HeaderValue::from_str(&ms.div_ceil(1000).max(1).to_string())
+        {
+            response.headers_mut().insert(header::RETRY_AFTER, value);
+        }
+        response
     }
 }
 fn json_response(mut status: StatusCode, value: &Value) -> Response {
@@ -433,6 +636,7 @@ struct ConnectionState {
     app: Arc<App>,
     deadline: watch::Sender<Instant>,
     allowed_write: Arc<AtomicBool>,
+    refresh_waiting: Arc<AtomicBool>,
 }
 async fn dispatch(State(connection): State<ConnectionState>, request: Request) -> Response {
     let result = handle(&connection, request).await;
@@ -477,19 +681,24 @@ async fn handle(connection: &ConnectionState, request: Request) -> Result<Value,
     {
         return Err(ApiError::InvalidRequest);
     }
+    let refresh = request.uri().path() == "/api/v1/refresh";
     let valuation = match request.uri().path() {
         "/api/v1/dashboard" => false,
+        "/api/v1/refresh" => false,
         "/api/v1/valuation" => true,
         _ => return Err(ApiError::NotFound),
     };
-    if request.method() != if valuation { Method::POST } else { Method::GET } {
+    if request.method()
+        != if valuation || refresh {
+            Method::POST
+        } else {
+            Method::GET
+        }
+    {
         return Err(ApiError::MethodNotAllowed);
     }
-    if app.stopping.load(Ordering::Acquire) && valuation {
-        return Err(ApiError::Stopping);
-    }
     if request.headers().contains_key(header::CONTENT_ENCODING)
-        || (valuation && !json_content_type(request.headers()))
+        || ((valuation || refresh) && !json_content_type(request.headers()))
     {
         return Err(ApiError::UnsupportedMediaType);
     }
@@ -528,18 +737,28 @@ async fn handle(connection: &ConnectionState, request: Request) -> Result<Value,
         }
         Some(input)
     } else {
-        if !body.is_empty() {
+        if refresh {
+            let empty: Value =
+                serde_json::from_slice(&body).map_err(|_| ApiError::InvalidRequest)?;
+            if !empty.as_object().is_some_and(|object| object.is_empty()) {
+                return Err(ApiError::InvalidRequest);
+            }
+        } else if !body.is_empty() {
             return Err(ApiError::InvalidRequest);
         }
         None
     };
-    connection
-        .deadline
-        .send_replace(app.clock.now() + RESPONSE_BUDGET);
+    let response_deadline = app.now() + RESPONSE_BUDGET;
+    connection.deadline.send_replace(response_deadline);
     #[cfg(test)]
     if let Some(gate) = &app.processing_gate {
         app.processing_entered.notify_one();
         gate.notified().await;
+    }
+    if refresh {
+        return app
+            .refresh(response_deadline, &connection.refresh_waiting)
+            .await;
     }
     match input {
         Some(input) => app.valuation(input),
@@ -584,12 +803,14 @@ impl AsyncWrite for ResponseIo {
 async fn connection(stream: TcpStream, app: Arc<App>, _connection: Slot, read_deadline: Instant) {
     let (deadline, mut changed) = watch::channel(read_deadline);
     let allowed_write = Arc::new(AtomicBool::new(false));
+    let refresh_waiting = Arc::new(AtomicBool::new(false));
     let router = Router::new()
         .fallback(dispatch)
         .with_state(ConnectionState {
             app: app.clone(),
             deadline,
             allowed_write: allowed_write.clone(),
+            refresh_waiting: refresh_waiting.clone(),
         });
     let mut builder = hyper::server::conn::http1::Builder::new();
     builder
@@ -609,7 +830,14 @@ async fn connection(stream: TcpStream, app: Arc<App>, _connection: Slot, read_de
         tokio::select! {
             biased;
             result=changed.changed()=>if result.is_err() { break; },
-            _=app.clock.sleep_until(deadline)=>break,
+            _=app.clock.sleep_until(deadline)=> {
+                if refresh_waiting.load(Ordering::Acquire) {
+                    // Give an expired refresh waiter one nonblocking poll to emit
+                    // its sanitized 504 if the socket can accept it. No extra budget.
+                    tokio::select! { biased; _=&mut future=>{}, _=std::future::ready(())=>{} }
+                }
+                break;
+            },
             _=&mut future=>break,
         }
     }
@@ -642,7 +870,7 @@ async fn serve(
                 Ok((stream,_))=> {
                     if tasks.len()>=32 { drop(stream); continue; }
                     let Ok(slot)=app.slot(true) else { drop(stream); continue; };
-                    let deadline=app.clock.now()+READ_BUDGET;
+                    let deadline=app.now()+READ_BUDGET;
                     tasks.spawn(connection(stream,app.clone(),slot,deadline));
                 },
                 Err(_)=>break Err(io::Error::other("local listener failed")),
@@ -650,9 +878,9 @@ async fn serve(
             _=tasks.join_next(), if !tasks.is_empty()=>{},
         }
     };
-    app.stopping.store(true, Ordering::Release);
+    app.stop();
     drop(listener);
-    let drain_deadline = app.clock.now() + RESPONSE_BUDGET;
+    let drain_deadline = app.now() + RESPONSE_BUDGET;
     while !tasks.is_empty() {
         tokio::select! {
             biased;
@@ -664,23 +892,39 @@ async fn serve(
     result
 }
 
-/// Start the only production server mode. It cannot construct a provider client.
+/// Start one local server and one blocking transport owner. No implicit fetch.
 /// The caller reports a static diagnostic on error, never the underlying OS text.
 pub fn run() -> io::Result<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .max_blocking_threads(1)
         .build()?;
-    runtime.block_on(async {
+    let app = Arc::new(App::new("127.0.0.1:3000".into(), Arc::new(MonotonicTime)));
+    let (worker, ready) = Worker::start(app.clone(), || {
+        crate::market_data::transport::ReqwestTransport::new(
+            crate::market_data::types::TimeoutConfig::default(),
+        )
+    })?;
+    let result = runtime.block_on(async {
+        ready
+            .await
+            .map_err(|_| io::Error::other("worker unavailable"))?
+            .map_err(|_| io::Error::other("worker initialization failed"))?;
         let listener = bind(3000).await?;
-        let app = Arc::new(App::new("127.0.0.1:3000".into(), Arc::new(MonotonicTime)));
         let mut signal_result = Ok(());
-        serve(listener, app, async {
+        serve(listener, app.clone(), async {
             signal_result = tokio::signal::ctrl_c().await;
         })
         .await?;
         signal_result
-    })
+    });
+    app.stop();
+    drop(runtime);
+    // Blocking OS/DNS work can delay this join; there is no hard deadline.
+    let joined = worker.join().map_err(|_| io::Error::other("worker failed"));
+    result.and(joined)
 }
+mod worker;
+use worker::Worker;
 #[cfg(test)]
 mod tests;

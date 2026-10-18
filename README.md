@@ -2,15 +2,18 @@
 
 A working one-observation Rust CLI for public cryptocurrency market data, with an accepted future full-stack dashboard architecture. Development uses a human-reviewed, incremental specification-driven workflow with Codex.
 
-## Current phase — M2b.1 local HTTP foundation
+## Current phase — M2b.2 market worker (review pending)
 
-The CLI invocation validates exactly one pair, constructs the existing production
-adapter and requests one observation. M2a adds a pure portfolio valuation library,
-independent of the CLI. M2b.1 adds a bounded local HTTP/1.1 server and two JSON
-endpoints. Provider refresh, worker integration, frontend, persistence and polling
-remain deferred. Specification 0005 stays APPROVED; the full MVP is incomplete.
-M1/M2a and the narrow M2b.1 implementation are human-accepted. The Product Owner
-authorized one M2b.1 checkpoint commit/push; subsequent features need separate scope.
+The synchronous CLI and exact portfolio domain are preserved. The local HTTP API
+now supports explicit market refresh through one bounded synchronous worker and a
+mutable server-owned snapshot. M1/M2a/M2b.1 are human-accepted; M2b.2 is locally
+verified and awaits review. Specification 0005 remains APPROVED; the Full-Stack MVP
+is incomplete. No frontend, operational fixture mode, persistence or polling exists.
+No dependency, toolchain, CI, commit, push or deployment change is included.
+The Product Owner subsequently authorized one M2b.2 checkpoint commit/normal push
+and verification of Actions for its exact SHA. The verification below was
+reproduced before publication; the checkpoint report records the published result.
+Independent Technical Lead review and full MVP acceptance remain separate.
 
 ## Exact portfolio domain (M2a)
 
@@ -44,7 +47,7 @@ M2a local verification: all four required Cargo gates pass; 105 tests pass
 quote freshness/incompleteness and bounded inputs with no live network calls.
 M2a was human-accepted before M2b.1; the earlier verification evidence is preserved.
 
-## Run the local API (M2b.1)
+## Run the local API (M2b.2)
 
 From the repository root with the unchanged pinned Rust 1.99.0 toolchain:
 
@@ -55,10 +58,11 @@ cargo run --locked -- --serve
 The server listens only on **http://127.0.0.1:3000**. Stop it with Ctrl-C.
 An occupied port fails closed with exit 3 and a static diagnostic. Existing
 `cargo run --locked -- "BTC/USDT"` / `"ETH/USDT"` CLI behavior is preserved.
-The API server constructs no provider transport and never fetches market data.
-Its initial observations remain empty; a positive portfolio is incomplete, while
-zero holdings produce an exact zero total. Fresh prices are injected only in tests.
-There is no browser UI or refresh endpoint in this milestone.
+Before listening, one dedicated worker constructs the production transport outside
+Tokio. Startup and GET/valuation cause no provider requests. Observations initially
+remain empty; positive holdings are incomplete and zero holdings total exactly zero.
+Only an admitted POST refresh requests public BTC/USDT, then ETH/USDT. No browser UI
+or fixture fallback is provided.
 
 In another PowerShell terminal:
 
@@ -71,12 +75,13 @@ $payload = @{
 Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/api/v1/valuation' -ContentType 'application/json' -Headers @{ Origin = 'http://127.0.0.1:3000' } -Body $payload
 ```
 
-GET returns schema version 1, an opaque run-scoped snapshot ID, and exactly BTC/ETH
-entries with null observations/timestamps and `not_attempted`. POST accepts only
+Initially, GET returns schema version 1, an opaque run-scoped snapshot ID, and
+exactly BTC/ETH entries with null observations/timestamps and `not_attempted`.
+POST valuation accepts only
 that snapshot ID and both quantity strings; zero holdings return `state: complete`,
 `total: "0"` and null allocations. Positive missing/stale quotes return incomplete
 with null total; mismatched IDs return 409. Monetary values are always strings.
-See [0005 contracts and M2b.1 evidence](docs/specs/0005-freelance-portfolio-mvp.md).
+See [0005 contracts and implementation evidence](docs/specs/0005-freelance-portfolio-mvp.md).
 
 Host must be exactly `127.0.0.1:3000`; POST requires Origin
 `http://127.0.0.1:3000`. GET may omit Origin. `localhost` aliases and the future
@@ -84,19 +89,65 @@ Vite origin are rejected. No CORS permission is emitted. Each connection serves
 one request, then closes. Limits: 32 tracked connections, 8 admitted handlers,
 5 seconds combined header/body reading, 25 seconds handling/response writing,
 4 KiB body, 16 KiB headers/64 fields, 2 KiB target and 32 KiB JSON response.
-Early parser failures and expired budgets close the socket without a response;
-application errors use sanitized JSON. Every emitted response has `no-store`.
-`ready` describes the API process, not provider availability; cooldown `"0"`
-does not enable the absent refresh route. Loopback/Host/Origin checks provide no
+Early parser failures and expired budgets close the socket; an expired refresh
+waiter can emit a sanitized 504 when the socket permits one immediate write.
+Every emitted response has `no-store`. `ready` describes API/worker readiness,
+not global Binance availability. Loopback/Host/Origin checks provide no
 authentication against local processes.
 
-Windows verification: all four Cargo gates passed, **137 tests passed**
-(105 preserved +30 HTTP +2 executable startup). Controlled-clock tests exercise
-actual loopback connections; the actual `--serve` binary also passed a loopback
-smoke check. Final checkpoint verification reproduced all four gates/137 tests.
-No live provider calls were made. Hosted results for the checkpoint are verified
-after publication and reported separately; no hosted success is inferred here.
-OS-enforced outbound network denial and actual OS Ctrl-C behavior remain unverified.
+To explicitly fetch public provider data, submit the exact empty JSON object:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/api/v1/refresh' -ContentType 'application/json' -Headers @{ Origin = 'http://127.0.0.1:3000' } -Body '{}'
+```
+
+This command makes up to two real public requests when admitted; it was **not run
+against Binance during M2b.2**. Reread the dashboard before an explicit valuation.
+Refresh returns 200 for completed batches, including safe per-pair failures;
+409 while busy; 429 during cooldown, with retry_after_ms and ceil-second Retry-After;
+503 if stopping/unavailable; or 504 if its HTTP waiter expires while work continues.
+Neither disconnect nor timeout releases admission or causes a retry.
+
+The worker owns client construction, reuse and destruction. A capacity-one channel
+and one atomic admission transition prevent a second batch from queuing. GET stays
+responsive during fetches; no snapshot lock covers provider I/O. Pair loading starts
+only at an actual call; its previous error, if retained, has last_error_is_previous
+set true during loading. Ordinary failure continues to ETH; 418/429 stops remaining
+calls. Untouched pairs retain their attempt metadata. Health reports observed
+outcomes, with safe top-level service errors for worker failure.
+
+Batch starts are at least 30 seconds apart. Provider rate limiting adds at least
+60 seconds from failure, or a greater valid Retry-After, using checked monotonic
+deadlines. Missing/zero/invalid metadata cannot bypass cooldown. An unrepresentable
+deadline disables refresh until restart with cooldown_unrepresentable. Restart is
+not guidance to evade provider quotas; shared-IP compliance is unverified.
+
+Observations are fresh through exactly 60 seconds of monotonic receipt age. Later
+expiry or a failed latest attempt makes a retained price explicitly stale. Snapshot
+IDs change on refresh/service mutations; expiry can invalidate valuation without
+changing ID. Valuation copies a consistent snapshot, rejects active refresh and
+replaced IDs, excludes stale positive holdings, and never fetches data.
+
+Ctrl-C closes acceptance and command admission. Unstarted work is discarded without
+attempts; a running call publishes its actual outcome, then skips remaining calls.
+HTTP waiters receive 503 when possible. After the bounded connection drain and
+application runtime shutdown, the synchronous owner joins the worker. Blocking
+OS/DNS operations can delay that join; there is no hard worker shutdown deadline.
+Worker initialization failure prevents listening. Unexpected termination disables
+refresh without respawning; GET remains available after runtime worker failure.
+
+M2b.2 Windows verification: all four required Cargo gates passed; **156 tests
+passed**, zero failed/ignored (137 preserved +19 deterministic worker/state tests).
+Tests use fake transport, controlled clocks and synchronization gates; no live
+Binance requests. Production transport, financial domain, CLI, dependency graph
+and CI are unchanged. Fresh cargo-audit: 194 packages, zero vulnerabilities/warnings;
+see 0005 for dated database evidence and the secret-scan scope.
+
+Historical M2b.1 evidence remains in 0005: 137 tests/four gates and a real-binary
+loopback smoke passed. Its smoke process was terminated; actual OS Ctrl-C remains
+unverified. M2b.2 does not claim Linux/hosted execution, OS-enforced egress denial,
+live DNS/TLS/provider availability, frontend readiness or complete security.
+The backend is ready for milestone review before separately authorized M3 UI work.
 
 ## Run the CLI
 
