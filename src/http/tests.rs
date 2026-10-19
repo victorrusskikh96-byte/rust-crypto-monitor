@@ -874,3 +874,6 @@ mod worker_tests;
 
 #[path = "fixture_tests.rs"]
 mod fixture_tests;
+
+#[path = "dev_ui_tests.rs"]
+mod dev_ui_tests;

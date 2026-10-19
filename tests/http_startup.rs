@@ -190,3 +190,52 @@ fn every_fixture_executable_startup_fails_closed_on_occupied_port() {
     }
     drop(occupied);
 }
+
+#[test]
+fn development_server_forms_fail_closed_on_occupied_port() {
+    let occupied = PortReservation::new();
+    let output = startup(&["--serve", "--dev-ui"]);
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        "error: local API server failed\n"
+    );
+    for scenario in [
+        "success",
+        "partial",
+        "stale",
+        "timeout",
+        "rate-limit",
+        "unavailable",
+    ] {
+        let output = startup(&["--serve", "--fixture", scenario, "--dev-ui"]);
+        assert_eq!(output.status.code(), Some(3), "{scenario}");
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            "error: local API server failed\n"
+        );
+    }
+    drop(occupied);
+}
+
+#[test]
+fn invalid_development_forms_exit_before_server_startup() {
+    for args in [
+        vec!["--dev-ui"],
+        vec!["--dev-ui", "--serve"],
+        vec!["--serve", "--dev-ui", "--dev-ui"],
+        vec!["--serve", "--dev-ui", "--fixture", "success"],
+        vec!["--serve", "--dev-ui", "http://127.0.0.1:5174"],
+        vec!["--serve", "--fixture", "unknown", "--dev-ui"],
+    ] {
+        let output = startup(&args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            "Usage: rust-crypto-monitor <BTC/USDT|ETH/USDT>\n"
+        );
+    }
+}

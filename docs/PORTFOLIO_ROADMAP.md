@@ -76,12 +76,23 @@ M0 replaces the earlier CLI-first next step with architectural review of the
 dashboard. Historical CLI/synchronous choices remain recorded in architecture and
 ADR 0001; the future application runtime extension is now accepted/reconciled
 through M1. The adapter remains synchronous.
-Implementation sequence, each separately scoped: current M1 read-only CLI;
-future stack compatibility/security review before web dependency adoption; M2 exact valuation/contracts with tests; M3
-bounded worker/local API/freshness/security; M4 responsive UI/persistence; M5
-deterministic E2E, security and reproduction plus separately approved CI work; M6
-genuine portfolio evidence and human release acceptance. See 0005 for measurable gates.
+Current implementation sequence (supersedes historical M0 numbering): M1 CLI,
+M2a exact valuation, M2b.1 local API, M2b.2 bounded worker and M2c fixtures are
+Product Owner-accepted. **M3.1 — Multi-Agent React Foundation & Secure Rust API
+Integration** is locally implemented, pending Technical Lead review. It includes
+exact Node/npm, reviewed frontend dependencies, minimal React shell, strict Vite
+proxy and the closed explicit development-Origin policy.
 
+M3.1 Git checkpoint: one commit/normal push and exact-SHA Actions verification are
+Product Owner-authorized after final local checks. Independent Technical Lead
+source review remains pending. Hosted CI is Rust-only; React gates are local-only.
+Browser E2E, visual audit, deployment and full MVP acceptance remain future work.
+**M3.2 — proposed Market Dashboard** should add the separately approved market
+presentation/explicit refresh workflow after M3.1 review. Full portfolio UI,
+provider-health presentation, optional persistence, reproduction/E2E, separately
+approved CI and portfolio release remain later scopes. Names/numbers beyond the
+approved slice are not implementation authorization. The Full-Stack MVP is not
+released. See [M3.1 report](M31_IMPLEMENTATION_REPORT.md) and specification 0005.
 Client-ready means working scenarios, real observations when available, explicit
 provider failures and provenance, accurate valuation, clean-checkout Windows/Linux
 setup, passing backend/frontend tests, hosted CI for the exact final commit,

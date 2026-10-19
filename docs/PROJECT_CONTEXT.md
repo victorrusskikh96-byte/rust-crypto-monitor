@@ -1,6 +1,6 @@
 # Rust Crypto Monitor — Project Context
 
-Snapshot: 2026-10-19 (M2c.1 human-accepted; M2c checkpoint locally verified, publication authorized, independent review pending). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization.
+Snapshot: 2026-10-19 (M2c accepted; M3.1 locally verified, publication checkpoint authorized, independent review pending). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization.
 
 Evidence labels:
 - **VERIFIED** — confirmed by inspected artifacts or executed checks; scope is stated.
@@ -15,7 +15,7 @@ Evidence labels:
 - Product Owner-approved direction: a demonstrable Full-Stack Crypto Market &
   Portfolio Dashboard for international Upwork clients; future architecture accepted,
   current code has the synchronous CLI, pure valuation and bounded local HTTP API
-  with explicit worker refresh. Frontend remains deferred.
+  with explicit worker refresh. M3.1 adds a minimal React shell and strict local Vite integration.
 - Target users: portfolio reviewers and users manually estimating BTC/ETH holdings.
 - Current MVP slice: one read-only latest-price observation for BTC/USDT or ETH/USDT
   through Binance; continuous monitoring is not implemented.
@@ -114,35 +114,34 @@ Evidence labels:
 | M2a | Pure exact portfolio valuation | Human-accepted before M2b.1 | [0007](specs/0007-exact-portfolio-valuation-domain.md), [tests](../tests/portfolio.rs) | No HTTP/serialization; caller supplies monotonic freshness metadata; conservative arithmetic capacity |
 | M2b.1 | Local HTTP foundation | Human-accepted; published checkpoint matches Git | [0005 evidence](specs/0005-freelance-portfolio-mvp.md), [HTTP tests](../src/http/tests.rs) | Historical 137-test baseline; Linux/operational gaps preserved |
 | M2b.2 | Bounded worker, refresh and state | Human-accepted in M2c request | [Worker tests](../src/http/worker_tests.rs), 0005 evidence | Independent source review/hosted success REPORTED by human; 156 baseline tests reproduced |
-| M2c | Operational offline fixture mode | Implementation; Technical Lead review pending | [Tests](../src/http/fixture_tests.rs), 0005 M2c evidence | No frontend, M2c hosted/Linux evidence or OS egress-denial proof |
+| M2c | Operational offline fixture mode | Product Owner-accepted in M3.1 authorization | [Tests](../src/http/fixture_tests.rs), 0005 M2c evidence | No frontend, M2c hosted/Linux evidence or OS egress-denial proof |
+| M3.1 | React foundation, strict Vite proxy and closed dev Origin | Local implementation; Technical Lead review pending | [Report](M31_IMPLEMENTATION_REPORT.md), [dependency review](security/m31-frontend-dependencies.md) | No complete dashboard, browser E2E, Linux reproduction or release |
 | Context v1 / W3.0 | Recovery entrypoint / career direction | VERIFIED: context v1 committed; W3.0 documentation prepared | Git and this file; portfolio roadmap | W3.0 accepted by human at consolidated checkpoint; no implementation authorization |
 
 ## 5. Current Repository State
 
-**VERIFIED** M2c recovery: clean main tracking origin/main, HEAD
-`981b33dd601dfbcedad66dc7366df67806e85263`; 156 baseline tests reproduced.
-**REPORTED** by human: M2b.2 accepted after independent source review and successful
-hosted CI. Hosted status/remote freshness was not independently re-queried in M2c.
+**VERIFIED** M3.1 entry: clean main and empty index at
+`3f76710df5b0cda6ebbe9ad7dfc1da098dbde06e`, matching local origin/main and expected
+origin URL. Remote freshness/hosted CI was not newly queried. M2c and all earlier
+milestones are **human-accepted** in the current Product Owner authorization.
+Historical M2c/M2c.1 evidence remains in specification 0005.
 
-At pre-publication verification M2c changes were uncommitted; index empty. Exact command contract, six scenarios,
-security boundaries, test-first failure and final gate evidence are recorded in
-[0005 M2c](specs/0005-freelance-portfolio-mvp.md).
-**VERIFIED** M2c Windows: four mandatory Cargo gates passed; 169 tests passed,
-zero failed/ignored (156 preserved +13 added). Test-first compile failure and an
-initial Windows executable-lock build failure are recorded in 0005; the build
-and full suite then passed sequentially. Diff/document/link checks passed.
-Production adapter/portfolio/CLI runner, dependencies/lock, CI, toolchain and ADRs
-remain unchanged. No live provider request, frontend, commit, push or deployment.
-Resumed checkpoint: all four gates/169 tests and a separate parallel startup suite
-passed; compiled success-fixture smoke verified synthetic refresh/exact valuation,
-then stopped/reaped only its child. M2c.1 changed only tests/http_startup.rs and is
-Technical Lead-accepted. Existing scanners rerun; results/scope are in the checkpoint
-report and 0005. Publication SHA/hosted outcome are reported after publication.
+At pre-publication checkpoint preparation, M3.1 changes are local and uncommitted. Node is now exactly 24.22.0 with bundled
+npm 11.19.1; official MSI checksum/Authenticode verified, Codex 0.163.0 unchanged.
+Frontend has 13 exact approved pins, script-disabled reproducible ci and a reviewed
+121-entry lock (108 transitives including platform optionals; 96 installed on
+Windows). Runtime decoders preserve decimal strings and reject unsupported input.
+One initial relative dashboard GET; no refresh/retry/polling or provider call.
 
-M1/M2a/M2b.1/M2b.2 and W3.0 are human-accepted. Earlier verification (adapter 60,
-M1 73, M2a 105, M2b.1 137, M2b.2 156 tests) remains in linked specifications.
-Full MVP acceptance and specification 0003 AC8/AC10 gaps are not closed by M2c.
-
+Rust adds only closed DevUi/DevUiFixture startup variants. Vite is loopback5173,
+fixed /api/v1/ -> loopback3000, exact Host guard before file/proxy middleware,
+Origin preserved, HMR/WebSockets/CORS disabled. Production Origin remains3000;
+development Origin is exclusively5173. Production static asset serving is deferred.
+See [M3.1 report](M31_IMPLEMENTATION_REPORT.md) for executed gates, integration and
+review limitations; [dependency evidence](security/m31-frontend-dependencies.md)
+records toolchain, scripts, licenses, advisories and native package limits.
+No Cargo dependency, financial arithmetic, adapter, worker, fixture semantics,
+CI workflow or deployment changed. Publication is separately authorized below.
 ## 6. Architecture Decisions
 
 - [ADR 0001 — Market Data Adapter](adr/0001-market-data-adapter.md): ACCEPTED.
@@ -186,7 +185,7 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
 - Body cap bounds application-consumed bytes, not every HTTP/kernel buffer.
 - Blocking transport is owned outside Tokio. Worker join has no hard deadline
   across OS/DNS operations; actual OS Ctrl-C remains unverified.
-- M2c fixture mode awaits review; dev Origin/Vite proxy and static assets remain deferred.
+- M2c is accepted. M3.1 implements dev Origin/Vite proxy; static production assets, full dashboard and browser E2E remain deferred.
 - Hosted Ubuntu transport/scanner execution, confidential vulnerability intake,
   security CI, dependency monitoring and operational isolation remain incomplete.
 - **REPORTED:** cargo-audit 0.22.2 scanned 185 packages with zero advisories/warnings;
@@ -199,20 +198,27 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
 
 ## 9. Next Authorized Actions
 
-- Current authorization: final M2c verification, exactly one commit named
-  feat: add isolated offline fixture scenarios, one normal non-force push to
-  origin/main and Actions verification for the exact new SHA; then stop for
-  Technical Lead review. Base: 981b33dd601dfbcedad66dc7366df67806e85263.
-- Include only the ten approved M2c files and accepted M2c.1 startup-test fix.
-  No additional features, dependencies, frontend, npm/Node, live Binance request,
-  deployment, trading, credentials, wallet/signing/mainnet capability.
-- Full MVP completion and M3 frontend dependency approval/implementation require
-  separate authorization. Vite Origin/proxy, static assets and browser workflows
-  remain future work; adapter AC8/AC10 and operational/security gaps remain.
-- This is a pre-publication recovery snapshot; the final checkpoint report records
-  the exact published SHA and hosted result. No second commit is authorized to
-  backfill those results, and publication does not establish milestone acceptance.
-
+- Product Owner authorized final M3.1 verification, exactly one commit named
+  feat: add react frontend foundation and secure dev proxy, one normal non-force
+  push to origin/main, and GitHub Actions verification for that exact SHA. Base:
+  3f76710df5b0cda6ebbe9ad7dfc1da098dbde06e. Stop afterward for independent
+  Technical Lead source review; publication does not establish acceptance.
+- No application/dependency/CI change, Node reinstall, additional commit/amend,
+  rebase/force-push, browser install, live Binance request or deployment. A material
+  defect, security regression, remote divergence or scope conflict stops publication.
+- All four Cargo gates/176 tests and local frontend typecheck/build/85 tests plus
+  focused Vite security15 tests passed at this checkpoint. npm ci reproduced the
+  unchanged lock with scripts disabled; npm audit reported zero findings.
+- Existing hosted CI runs Rust only. React gates/integration remain local-only.
+  Exact published SHA and hosted URL/conclusions belong in the final checkpoint
+  response; do not create a follow-up commit to backfill future results.
+- M3.1 is not human-accepted yet; specification 0005 remains APPROVED and full MVP
+  release gates remain open. M3.2 Market Dashboard is a recommendation requiring
+  separately approved scope; do not start it from this recovery map.
+- Reproduce fixture development using README's exact Node/npm and startup commands.
+  Preserve loopback ports, closed Origin policies, lockfile and script-disabled ci.
+- Adapter AC8/AC10, browser/visual evidence, Linux/clean-checkout parity, production
+  assets, native binary assurance and continuing security monitoring remain open.
 ## 10. Context Recovery Instructions
 
 1. Read this file and AGENTS.md; treat this snapshot as a map, not current proof.

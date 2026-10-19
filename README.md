@@ -2,20 +2,94 @@
 
 A working one-observation Rust CLI for public cryptocurrency market data, with an accepted future full-stack dashboard architecture. Development uses a human-reviewed, incremental specification-driven workflow with Codex.
 
-## Current phase — M2c offline fixture mode (review pending)
+## Current phase — M3.1 React foundation (local review pending)
 
-The CLI, exact portfolio domain and bounded local API are preserved. M2b.2 is
-human-accepted after independent source review and successful hosted CI, as reported
-in the M2c request; published baseline: 981b33dd601dfbcedad66dc7366df67806e85263.
-M2c adds explicit operational synthetic scenarios without provider access.
-Specification 0005 remains APPROVED; the Full-Stack MVP is incomplete.
-No frontend, persistence, polling, dependency, toolchain or CI change is included.
-M2c.1 startup-test remediation is Technical Lead-accepted. The Product Owner
-authorizes one M2c checkpoint commit/normal push and exact-SHA Actions verification.
-This document records pre-publication evidence; the checkpoint report records the
-published SHA/hosted result. Independent M2c review and full MVP acceptance remain
-separate; deployment is not authorized.
+M2c and all earlier milestones are Product Owner-accepted. The verified M3.1
+starting checkpoint is clean main at
+`3f76710df5b0cda6ebbe9ad7dfc1da098dbde06e`, matching local origin/main.
+M3.1 adds a minimal React shell, runtime API contracts, a strict local Vite proxy
+and an explicit Rust development-Origin policy. The synchronous adapter, exact
+portfolio arithmetic and offline fixture semantics are preserved.
+Specification 0005 stays APPROVED; the complete Full-Stack MVP is not released.
+M3.1 is locally verified and awaits independent Technical Lead source review.
+The Product Owner authorized one M3.1 checkpoint commit, one normal push and
+exact-commit hosted CI verification. CI workflows are unchanged and run Rust
+quality gates only; React typecheck/build/Vitest evidence is local-only.
+Browser E2E, visual audit and deployment remain pending.
 
+## Fixture-only frontend development (M3.1)
+
+Use exactly **Node.js 24.22.0 LTS and bundled npm 11.19.1**, plus the pinned Rust
+1.99.0 toolchain. No browser installation is needed. See the
+[dependency/security review](docs/security/m31-frontend-dependencies.md) for pins,
+verified distribution integrity, script restrictions, native packages and limits.
+
+From the repository root, install the reviewed lock without lifecycle scripts:
+
+```powershell
+npm ci --ignore-scripts --no-fund --engine-strict --prefix frontend
+```
+
+In one terminal start only the synthetic Rust server:
+
+```powershell
+cargo run --locked -- --serve --fixture success --dev-ui
+```
+
+In another terminal start the local frontend:
+
+```powershell
+npm run dev --prefix frontend
+```
+
+Open **http://127.0.0.1:5173** manually. Both ports must be free; occupied ports
+fail closed. Stop only your servers with Ctrl-C. Do not substitute localhost,
+change ports or expose the listener. HMR and WebSockets are disabled; reload
+manually after edits. GET on load does not refresh markets. The success fixture
+starts with empty observations and is clearly labeled synthetic. The shell shows
+loading, safe disconnection, API/worker status, mode, scenario and snapshot identity.
+It does not yet provide market cards, valuation forms or refresh controls.
+
+The closed Origin policies are mutually exclusive:
+
+| Startup | Allowed Origin | Backend Host |
+| --- | --- | --- |
+| `--serve` | `http://127.0.0.1:3000` | `127.0.0.1:3000` |
+| `--serve --fixture success` | `http://127.0.0.1:3000` | `127.0.0.1:3000` |
+| `--serve --dev-ui` | `http://127.0.0.1:5173` | `127.0.0.1:3000` |
+| `--serve --fixture success --dev-ui` | `http://127.0.0.1:5173` | `127.0.0.1:3000` |
+
+Other existing fixture names work only in the same position before --dev-ui.
+No-Origin GET remains available for local tools. POST requires one exact allowed
+Origin and application/json. Vite accepts only Host 127.0.0.1:5173, rejects
+forwarded authorities, serves only the frontend allowlist and denies sensitive
+files. Only /api/v1/ proxies to fixed http://127.0.0.1:3000. It rewrites Host,
+preserves Origin including absence, and supplies no permissive CORS policy.
+There is no browser-configurable API destination or provider request.
+
+## Frontend verification
+
+Run the existing four Rust gates below first, sequentially, including build so
+the fixture executable exists. Then run:
+
+```powershell
+npm run typecheck --prefix frontend
+npm run build --prefix frontend
+npm test --prefix frontend
+```
+
+Vitest uses at most two workers and serial test files. Its fixed-port proxy and
+fixture integration tests require 3000 and 5173 free and never kill an existing
+owner. The fixture smoke supervises/reaps only its own Rust process, uses actual
+Vite/HTTP and renders React in jsdom. This is not browser E2E or visual testing.
+node_modules, Vite caches and dist are ignored. The production build is verified;
+Rust serving built assets remains future scope. The development CSP permits local
+inline CSS injection, while scripts and connections remain self-only.
+
+See the [M3.1 report](docs/M31_IMPLEMENTATION_REPORT.md) and
+[specification evidence](docs/specs/0005-freelance-portfolio-mvp.md) for executed
+checks and remaining limitations. Proposed next slice: M3.2 Market Dashboard,
+subject to its own specification and approval.
 ## Exact portfolio domain (M2a)
 
 [portfolio.rs](src/portfolio.rs) exposes validated Quantity, explicit BTC/ETH

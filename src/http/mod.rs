@@ -195,14 +195,20 @@ impl App {
         }
     }
     fn for_mode(authority: String, clock: Arc<dyn TimeSource>, mode: ServerMode) -> Self {
-        match mode {
-            ServerMode::Real => Self::new(authority, clock),
-            ServerMode::Fixture(scenario) => {
+        let mut app = match mode {
+            ServerMode::Real | ServerMode::DevUi => Self::new(authority, clock),
+            ServerMode::Fixture(scenario) | ServerMode::DevUiFixture(scenario) => {
                 let mut app = Self::new(authority, fixture::clock(clock));
                 fixture::configure(&mut app, scenario);
                 app
             }
+        };
+        if matches!(mode, ServerMode::DevUi | ServerMode::DevUiFixture(_)) {
+            // Startup selects one closed policy, never an additional trusted
+            // origin. The backend authority and all request checks stay intact.
+            app.origin = "http://127.0.0.1:5173".into();
         }
+        app
     }
     fn annotate(&self, mut value: Value) -> Value {
         if let Some(scenario) = self.fixture {
@@ -982,6 +988,8 @@ pub use fixture::FixtureScenario;
 pub enum ServerMode {
     Real,
     Fixture(FixtureScenario),
+    DevUi,
+    DevUiFixture(FixtureScenario),
 }
 impl ServerMode {
     /// Accept only the exact server forms, before runtime/client/listener creation.
@@ -990,8 +998,14 @@ impl ServerMode {
     pub fn from_arguments(args: &[std::ffi::OsString]) -> Option<Self> {
         match args {
             [serve] if serve == "--serve" => Some(Self::Real),
+            [serve, dev_ui] if serve == "--serve" && dev_ui == "--dev-ui" => Some(Self::DevUi),
             [serve, fixture, scenario] if serve == "--serve" && fixture == "--fixture" => {
                 FixtureScenario::parse(scenario).map(Self::Fixture)
+            }
+            [serve, fixture, scenario, dev_ui]
+                if serve == "--serve" && fixture == "--fixture" && dev_ui == "--dev-ui" =>
+            {
+                FixtureScenario::parse(scenario).map(Self::DevUiFixture)
             }
             _ => None,
         }

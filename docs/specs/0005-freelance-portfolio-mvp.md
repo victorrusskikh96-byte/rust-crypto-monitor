@@ -557,7 +557,7 @@ problem, contribution, architecture, tests, security and limitations. Label fixt
 captures and any AI assistance honestly. No deliverable is claimed produced in M0.
 Public presentation, commits/pushes and deployment each need explicit authorization.
 
-## Incremental implementation milestones
+## Historical M0 implementation sequence (superseded by accepted M1–M3.1 scopes)
 | Milestone | Proposed reviewable outcome; approval gate |
 | --- | --- |
 | M0 / M0.1 | Draft specification, proposed ADR and context/roadmap; conditional Option B direction recorded and execution/security/precision contracts refined; stop for final review. |
@@ -1142,3 +1142,80 @@ The exact published SHA and hosted Formatting/Clippy/Build/Tests conclusion are
 reported after publication; this pre-publication evidence cannot claim future
 hosted success. M2c remains subject to independent review, specification status
 stays APPROVED, and M3 frontend dependency approval/implementation remains separate.
+
+## M3.1 approved local scope (2026-10-19)
+
+The Product Owner accepts all previous milestones through M2c, confirms published
+baseline 3f76710df5b0cda6ebbe9ad7dfc1da098dbde06e on main, and explicitly approves
+M3.1 — Multi-Agent React Foundation & Secure Rust API Integration. This supersedes
+older deferred-frontend and pending-M2c status text at their historical checkpoints.
+Specification status stays APPROVED; neither full MVP release nor M3.1 human
+acceptance is inferred from implementation.
+
+Approved slice: Node24.22.0/bundled npm11.19.1 from the verified official release;
+13 exact frontend pins and reviewed lock; minimal React shell with one dashboard
+GET; strict runtime contracts preserving financial strings; fixed loopback Vite
+proxy; explicit mutually exclusive Rust production/development Origins; genuine
+Coordinator plus three subagents; deterministic fixtures/tests and documentation.
+No full dashboard/calculator, polling, retries, browser harness installation, CI,
+provider request, global Codex/model configuration, commit/push or deployment.
+
+The current names are M3.1 React Foundation & Secure Rust API Integration and
+M3.2 proposed Market Dashboard (requires separate specification/approval). Historical
+M0 M3-backend/M4-frontend labels above are not current milestone authorization.
+
+New trust boundaries: npm packages/native binaries -> developer machine;
+untrusted API JSON -> React state; browser headers/files -> Vite -> Rust.
+Controls: exact-lock script-disabled installation, bounded strict response decoder,
+opaque tokens/decimal strings, static safe errors, React escaping, early exact Host
+and sensitive-file denial, frontend-only filesystem allowlist, fixed proxy target,
+Origin preservation, closed mode selection, and no HMR/WebSockets/permissive CORS.
+Local processes remain unauthenticated. The development CSP allows inline styles
+for Vite CSS injection; no external scripts/fonts/telemetry or browser destination
+configuration. See [dependency review](../security/m31-frontend-dependencies.md).
+
+Tests were defined before behavior where practical. Rust dev-policy tests first
+failed compilation for missing DevUi variants, then passed after the narrow change.
+QA independently authored and reviewed contract/component/proxy/startup/integration
+tests. The original fixed-port startup reservation/watchdog/remediation is retained.
+Exact commands, final counts, initial harness findings, integration evidence and
+limitations are in the [M3.1 implementation report](../M31_IMPLEMENTATION_REPORT.md).
+
+Production --serve and --serve --fixture success retain Origin3000. Explicit
+--serve --dev-ui and --serve --fixture success --dev-ui select only Origin5173.
+Host stays exactly127.0.0.1:3000; no-Origin GET remains allowed; POST requires one
+exact allowed Origin and application/json. Worker/cooldown/body limits are unchanged.
+Vite accepts only127.0.0.1:5173, proxies only/api/v1/ to fixed3000, rewrites Host
+and never Origin, and rejects forwarded authorities/upgrades before file/proxy work.
+All other approved scenarios retain their existing semantics with the same suffix.
+
+README records fixture-only startup and sequential gates. The shell displays
+loading/disconnection, backend readiness separate from provider availability,
+mode/scenario, persistent synthetic notice and opaque snapshot metadata. Initial
+success fixtures have no observations until explicit refresh; the shell does not
+add refresh controls or fabricate market values. Production asset serving, full
+frontend workflows, browser/visual verification, Linux reproduction, hosted final
+CI and adapter AC8/AC10 remain separate release evidence. Stop after M3.1 local
+verification for Technical Lead review; do not mark this specification IMPLEMENTED.
+
+## M3.1 publication checkpoint authorization (2026-10-19)
+
+The Product Owner separately authorizes final verification, exactly one M3.1 commit
+`feat: add react frontend foundation and secure dev proxy`, one normal non-force
+push to origin/main and Actions verification for that exact published SHA. This
+supersedes the implementation-only publication prohibition above for this checkpoint
+only; no source correction, new dependency/feature, workflow modification, additional
+commit/amend/rebase/force-push, provider request or deployment is authorized.
+
+Three genuine agents completed read-only reviews with no material blocker. All four
+Rust gates passed again with176tests, and local frontend typecheck/build/85tests,
+focused actual-Vite15security tests and script-disabled unchanged-lock npm ci passed.
+Fixture-only Rust/Vite/jsdom integration passed with owned-process cleanup. Node is
+24.22.0, bundled npm11.19.1, Codex0.163.0; no reinstall or upgrade. Further checkpoint
+review/evidence and limitations are in the M3.1 implementation report.
+
+Existing hosted CI executes Rust gates only. React gates are local-only; browser
+E2E/visual audit and deployment remain pending. The final checkpoint response records
+published SHA, push and actual Actions outcomes after publication, without a second
+commit. Independent Technical Lead source review, M3.1 human acceptance and full MVP
+release remain separate. Specification remains APPROVED, not IMPLEMENTED.
