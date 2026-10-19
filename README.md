@@ -2,22 +2,18 @@
 
 A working one-observation Rust CLI for public cryptocurrency market data, with an accepted future full-stack dashboard architecture. Development uses a human-reviewed, incremental specification-driven workflow with Codex.
 
-## Current phase — M3.1 React foundation (local review pending)
+## Current phase — M3.2 Market Dashboard (local review pending)
 
-M2c and all earlier milestones are Product Owner-accepted. The verified M3.1
-starting checkpoint is clean main at
-`3f76710df5b0cda6ebbe9ad7dfc1da098dbde06e`, matching local origin/main.
-M3.1 adds a minimal React shell, runtime API contracts, a strict local Vite proxy
-and an explicit Rust development-Origin policy. The synchronous adapter, exact
-portfolio arithmetic and offline fixture semantics are preserved.
-Specification 0005 stays APPROVED; the complete Full-Stack MVP is not released.
-M3.1 is locally verified and awaits independent Technical Lead source review.
-The Product Owner authorized one M3.1 checkpoint commit, one normal push and
-exact-commit hosted CI verification. CI workflows are unchanged and run Rust
-quality gates only; React typecheck/build/Vitest evidence is local-only.
-Browser E2E, visual audit and deployment remain pending.
+The Product Owner authorizes local M3.2 on published M3.1 baseline
+`e1fe014336a0932e9d287c926873d24285eb83ff`. Market Overview presents exactly BTC/USDT
+and ETH/USDT, manual refresh and observed Provider Health. Exact price strings and
+synthetic provenance are preserved. No portfolio UI, dependency changes, live calls, CI
+changes or deployment are included. M3.2 awaits independent Technical Lead review;
+specification 0005 remains APPROVED and the Full-Stack MVP is incomplete.
+See the [specification](docs/specs/0008-market-dashboard.md) and
+[implementation report](docs/M32_IMPLEMENTATION_REPORT.md).
 
-## Fixture-only frontend development (M3.1)
+## Fixture-only frontend development
 
 Use exactly **Node.js 24.22.0 LTS and bundled npm 11.19.1**, plus the pinned Rust
 1.99.0 toolchain. No browser installation is needed. See the
@@ -46,9 +42,27 @@ Open **http://127.0.0.1:5173** manually. Both ports must be free; occupied ports
 fail closed. Stop only your servers with Ctrl-C. Do not substitute localhost,
 change ports or expose the listener. HMR and WebSockets are disabled; reload
 manually after edits. GET on load does not refresh markets. The success fixture
-starts with empty observations and is clearly labeled synthetic. The shell shows
-loading, safe disconnection, API/worker status, mode, scenario and snapshot identity.
-It does not yet provide market cards, valuation forms or refresh controls.
+starts empty and is clearly labeled synthetic. Choose **Refresh markets** explicitly:
+BTC becomes exactly 65000.12 USDT and ETH 2500.00000001 USDT. Each card shows
+observation state/age, source and last attempt/success metadata. Provider Health
+reports simulated outcomes separately from API connectivity and worker readiness.
+Other approved fixture scenarios demonstrate partial, stale, timeout, rate-limit
+and unavailable outcomes without external provider requests.
+
+No automatic market requests occur on load or tab resume. Refresh is disabled while
+pending, busy, uncertain or in server cooldown; countdown expiry never submits it.
+Retained quotes remain stale/previous during failure or disconnection. Freshness
+expires after 60,000 ms using conservative monotonic elapsed; resume invalidates
+prior freshness. Display age is an estimate at the last UI update. **Read backend
+state** is an explicit safe GET when outcomes are uncertain.
+
+Client deadlines include body reading: GET 10 seconds, refresh POST 35 seconds
+(Rust permits 5 seconds reading +25 seconds response; Vite retains its existing
+30-second proxy limits). A 504 or client refresh deadline causes one bounded
+read-only reconciliation GET, never a POST retry. Browser cancellation does not
+cancel admitted backend work. A failed read or busy snapshot requires another
+explicit state read; there are no recursive retries or polling.
+Fixture timestamps are simulated receipt labels, never historical trade evidence.
 
 The closed Origin policies are mutually exclusive:
 
@@ -88,8 +102,8 @@ inline CSS injection, while scripts and connections remain self-only.
 
 See the [M3.1 report](docs/M31_IMPLEMENTATION_REPORT.md) and
 [specification evidence](docs/specs/0005-freelance-portfolio-mvp.md) for executed
-checks and remaining limitations. Proposed next slice: M3.2 Market Dashboard,
-subject to its own specification and approval.
+checks and remaining limitations. M3.2 evidence is recorded in its separate report;
+acceptance and the remaining portfolio MVP require Technical Lead review.
 ## Exact portfolio domain (M2a)
 
 [portfolio.rs](src/portfolio.rs) exposes validated Quantity, explicit BTC/ETH

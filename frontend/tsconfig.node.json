@@ -11,7 +11,7 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "noEmit": true,
-    "skipLibCheck": true,
+    "skipLibCheck": false,
     "types": ["node"]
   },
   "include": ["vite.config.ts", "vitest.config.ts", "tests/proxy"]

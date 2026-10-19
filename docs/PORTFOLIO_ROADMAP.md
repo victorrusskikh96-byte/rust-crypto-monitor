@@ -55,6 +55,15 @@ the M2b.1 Git checkpoint request; only one commit/push is authorized.
 Provider worker/refresh (M2b.2), frontend and portfolio release remain deferred;
 [0005 evidence](specs/0005-freelance-portfolio-mvp.md) records scope and limitations.
 
+## M3.2 local checkpoint (2026-10-19)
+
+The Product Owner authorizes the market dashboard on published M3.1 baseline
+e1fe014336a0932e9d287c926873d24285eb83ff. Market cards, explicit refresh and Provider
+Health are implemented locally under [specification 0008](specs/0008-market-dashboard.md);
+[the report](M32_IMPLEMENTATION_REPORT.md) distinguishes gates and independent review.
+No portfolio calculator, release or deployment is included. Acceptance remains
+pending Technical Lead review; the complete Project A MVP is not finished.
+
 ## Project A — Rust Crypto Monitor
 
 An off-chain Rust engineering portfolio project in this repository. Demonstrate

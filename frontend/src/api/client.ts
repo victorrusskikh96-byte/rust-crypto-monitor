@@ -1,19 +1,32 @@
-import type { Dashboard } from './contracts';
+import type { Dashboard, SafeError } from './contracts';
 import { decodeDashboard, decodeErrorEnvelope } from './decode';
 
+// Rust: 5s request reading + 25s response; Vite: fixed 30s proxy budgets.
+// Refresh must allow that window. These bounds include response body consumption.
+export const GET_DEADLINE_MS = 10_000;
+export const REFRESH_DEADLINE_MS = 35_000;
+type ErrorKind = 'disconnected' | 'invalid_response' | 'http_error' | 'aborted' | 'timeout';
+
 export class ApiClientError extends Error {
-  constructor(public readonly kind: 'disconnected' | 'invalid_response' | 'http_error' | 'aborted') {
+  constructor(
+    public readonly kind: ErrorKind,
+    public readonly status?: number,
+    public readonly safeError?: SafeError,
+    public readonly retryAfterMs: string | null = null,
+  ) {
     super('The local API snapshot is unavailable');
     this.name = 'ApiClientError';
   }
 }
 
 async function readJson(response: Response, signal: AbortSignal): Promise<unknown> {
-  if (response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json') {
+  if (response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json' || !response.body) {
+    void response.body?.cancel().catch(() => undefined);
     throw new ApiClientError('invalid_response');
   }
-  if (!response.body) throw new ApiClientError('invalid_response');
   const reader = response.body.getReader();
+  const cancel = () => { void reader.cancel().catch(() => undefined); };
+  signal.addEventListener('abort', cancel, { once: true });
   const chunks: Uint8Array[] = [];
   let length = 0;
   try {
@@ -25,45 +38,97 @@ async function readJson(response: Response, signal: AbortSignal): Promise<unknow
       if (length > 32768) throw new ApiClientError('invalid_response');
       chunks.push(chunk.value);
     }
+    signal.throwIfAborted();
+    const bytes = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown;
   } finally {
-    await reader.cancel().catch(() => undefined);
-    reader.releaseLock();
+    signal.removeEventListener('abort', cancel);
+    cancel();
+    // A malicious/stalled stream's cancellation promise must not extend the deadline.
+    try { reader.releaseLock(); } catch { /* Pending read is detached after cancellation. */ }
   }
-  signal.throwIfAborted();
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown;
 }
 
-export async function getDashboard(signal: AbortSignal): Promise<Dashboard> {
-  try {
-    signal.throwIfAborted();
-    const response = await fetch('/api/v1/dashboard', {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-      credentials: 'omit',
-      redirect: 'error',
-      signal,
-    });
-    let body: unknown;
+function retryDelay(response: Response, error: SafeError): string | null {
+  let delay = error.retry_after_ms === undefined ? null : BigInt(error.retry_after_ms);
+  const header = response.headers.get('retry-after');
+  // Only bounded integer delta-seconds are used; never a wall-clock HTTP date.
+  if (header !== null && /^(0|[1-9][0-9]{0,38})$/.test(header)) {
+    const milliseconds = BigInt(header) * 1000n;
+    if (delay === null || milliseconds > delay) delay = milliseconds;
+  }
+  return delay?.toString() ?? null;
+}
+
+async function requestDashboard(method: 'GET' | 'POST', external: AbortSignal): Promise<Dashboard> {
+  if (external.aborted) throw new ApiClientError('aborted');
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  external.addEventListener('abort', abort, { once: true });
+  let timedOut = false;
+  const timeout = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, method === 'GET' ? GET_DEADLINE_MS : REFRESH_DEADLINE_MS);
+  let rejectAbort: (() => void) | undefined;
+  const cancelled = new Promise<never>((_, reject) => {
+    rejectAbort = () => reject(new ApiClientError(timedOut ? 'timeout' : 'aborted'));
+    controller.signal.addEventListener('abort', rejectAbort, { once: true });
+  });
+  const operation = async () => {
+    let response: Response;
     try {
-      body = await readJson(response, signal);
-      if (response.ok) return decodeDashboard(body);
-      decodeErrorEnvelope(body);
-    } catch (error) {
-      if (signal.aborted) throw new ApiClientError('aborted');
-      if (error instanceof ApiClientError) throw error;
-      throw new ApiClientError('invalid_response');
+      response = await fetch(method === 'GET' ? '/api/v1/dashboard' : '/api/v1/refresh', {
+        method,
+        headers: method === 'GET'
+          ? { Accept: 'application/json' }
+          : { Accept: 'application/json', 'Content-Type': 'application/json' },
+        ...(method === 'POST' ? { body: '{}' } : {}),
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        signal: controller.signal,
+      });
+    } catch {
+      throw new ApiClientError('disconnected');
     }
-    throw new ApiClientError('http_error');
+    if (controller.signal.aborted) void response.body?.cancel().catch(() => undefined);
+    controller.signal.throwIfAborted();
+    try {
+      const body = await readJson(response, controller.signal);
+      controller.signal.throwIfAborted();
+      if (response.status === 200) return decodeDashboard(body);
+      if (response.ok) throw new ApiClientError('invalid_response');
+      const safeError = decodeErrorEnvelope(body);
+      throw new ApiClientError('http_error', response.status, safeError, retryDelay(response, safeError));
+    } catch (error) {
+      if (error instanceof ApiClientError && error.kind !== 'invalid_response') throw error;
+      throw new ApiClientError('invalid_response', response.status);
+    }
+  };
+  try {
+    return await Promise.race([operation(), cancelled]);
   } catch (error) {
-    if (signal.aborted) throw new ApiClientError('aborted');
+    if (external.aborted) throw new ApiClientError('aborted');
+    if (timedOut) throw new ApiClientError('timeout');
     if (error instanceof ApiClientError) throw error;
     throw new ApiClientError('disconnected');
+  } finally {
+    globalThis.clearTimeout(timeout);
+    external.removeEventListener('abort', abort);
+    if (rejectAbort) controller.signal.removeEventListener('abort', rejectAbort);
+    controller.abort();
   }
+}
+
+export function getDashboard(signal: AbortSignal): Promise<Dashboard> {
+  return requestDashboard('GET', signal);
+}
+export function refreshMarkets(signal: AbortSignal): Promise<Dashboard> {
+  return requestDashboard('POST', signal);
 }

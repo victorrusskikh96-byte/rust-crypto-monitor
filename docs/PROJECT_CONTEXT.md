@@ -1,6 +1,6 @@
 # Rust Crypto Monitor — Project Context
 
-Snapshot: 2026-10-19 (M2c accepted; M3.1 locally verified, publication checkpoint authorized, independent review pending). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization.
+Snapshot: 2026-10-19 (M3.1 published baseline verified; M3.2 locally implemented, Technical Lead review pending). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization.
 
 Evidence labels:
 - **VERIFIED** — confirmed by inspected artifacts or executed checks; scope is stated.
@@ -219,6 +219,16 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
   Preserve loopback ports, closed Origin policies, lockfile and script-disabled ci.
 - Adapter AC8/AC10, browser/visual evidence, Linux/clean-checkout parity, production
   assets, native binary assurance and continuing security monitoring remain open.
+## M3.2 current local checkpoint
+
+Product Owner authorizes M3.2, superseding section9's historical future-scope boundary.
+Entry: clean main; HEAD/local origin/main e1fe014336a0932e9d287c926873d24285eb83ff.
+No remote fetch/new hosted CI is implied. [0008](specs/0008-market-dashboard.md) defines
+exact market cards, manual refresh, health, freshness, cooldown and bounded reconciliation.
+Final gates: Rust176/frontend139 tests, strict typecheck/build, six fixture integrations.
+[Report](M32_IMPLEMENTATION_REPORT.md) records genuine ownership, evidence and limits.
+Rust/locks/CI unchanged; local/uncommitted, awaiting Technical Lead review, no acceptance.
+
 ## 10. Context Recovery Instructions
 
 1. Read this file and AGENTS.md; treat this snapshot as a map, not current proof.

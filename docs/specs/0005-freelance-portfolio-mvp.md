@@ -1219,3 +1219,21 @@ E2E/visual audit and deployment remain pending. The final checkpoint response re
 published SHA, push and actual Actions outcomes after publication, without a second
 commit. Independent Technical Lead source review, M3.1 human acceptance and full MVP
 release remain separate. Specification remains APPROVED, not IMPLEMENTED.
+
+## M3.2 approved local Market Dashboard scope (2026-10-19)
+
+The Product Owner explicitly authorizes local market overview, manual refresh,
+truthful Provider Health/freshness/errors, bounded deadlines, cooldown/duplicate
+guards, single read-only timeout reconciliation, strict library checking,
+deterministic tests and documentation. [Specification 0008](0008-market-dashboard.md)
+records the plan and acceptance criteria; the
+[M3.2 report](../M32_IMPLEMENTATION_REPORT.md) records executed evidence and limits.
+
+Baseline HEAD/local origin/main is e1fe014336a0932e9d287c926873d24285eb83ff.
+Three genuine subagents perform presentation, read-only backend verification,
+and QA/security; the coordinator owns shared interfaces/state/client/integration.
+Rust endpoint/security/fixture behavior remains unchanged. No new packages,
+lock changes, CI changes, real provider requests, polling, portfolio UI, trading,
+deployment, commit or push. Stop at local review. This supersedes earlier M3.2
+future-scope wording only for this authorized slice. M3.2 is not accepted;
+specification 0005 remains APPROVED, not IMPLEMENTED.

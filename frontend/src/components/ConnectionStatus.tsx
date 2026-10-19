@@ -7,9 +7,10 @@ export function ConnectionStatus({ state, serviceState }: ConnectionStatusProps)
   const label = state === 'loading'
     ? 'Connecting to local API'
     : state === 'connected' ? 'API connected' : 'API disconnected';
-  const backendLabel = serviceState === 'ready'
-    ? 'Backend ready'
-    : serviceState === 'stopping' ? 'Backend stopping' : 'Backend unavailable';
+  const backendLabel = serviceState === undefined
+    ? 'Backend state unconfirmed'
+    : serviceState === 'ready' ? 'Backend ready'
+      : serviceState === 'stopping' ? 'Backend stopping' : 'Backend unavailable';
 
   return (
     <div className={`connection-status connection-${state}`} role="status" aria-live="polite" aria-atomic="true">

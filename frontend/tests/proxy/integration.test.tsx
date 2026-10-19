@@ -1,4 +1,4 @@
-import { act, render, screen, cleanup } from '@testing-library/react';
+import { act, fireEvent, render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createServer as createTcpServer } from 'node:net';
 import { request as httpRequest } from 'node:http';
@@ -6,6 +6,7 @@ import { basename, join, resolve } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { expect, it, vi } from 'vitest';
 import App from '../../src/App';
+import type { Dashboard } from '../../src/api/contracts';
 
 const origin = 'http://127.0.0.1:5173';
 const workspace = process.cwd();
@@ -64,75 +65,129 @@ async function reap(child:ChildProcess): Promise<void> {
   } finally { if (timeout) clearTimeout(timeout); }
 }
 
-it('loads a real fixture Rust snapshot through actual Vite and renders its synthetic notice', async () => {
+const scenarios=['success','partial','stale','timeout','rate-limit','unavailable'] as const;
+// One owned backend and one Vite server per scenario; Vitest fileParallelism=false.
+// These are jsdom integration smokes, not browser/visual E2E evidence.
+it.each(scenarios)('explicit React -> Vite -> Rust refresh uses only the %s synthetic fixture',async scenario=>{
   expect(basename(workspace)).toBe('frontend');
-  // No existing process is terminated if either fixed port belongs to someone else.
   await checkPortFree(3000);
   await checkPortFree(5173);
-  const nativeFetch = globalThis.fetch;
-  let vite: ViteDevServer | undefined;
-  let childError: Error | undefined;
-  let outputBytes = 0;
-  const child = spawn(binary,['--serve','--fixture','success','--dev-ui'],{stdio:['ignore','pipe','pipe'],windowsHide:true});
-  child.once('error',error => {childError=error;});
-  for (const stream of [child.stdout,child.stderr]) stream?.on('data',(chunk:Buffer) => {
-    outputBytes += chunk.byteLength;
-    if (outputBytes > 8192) {childError=new Error('fixture child exceeded bounded output'); child.kill();}
+  const nativeFetch=globalThis.fetch;
+  let vite:ViteDevServer|undefined;
+  let childError:Error|undefined;
+  let outputBytes=0;
+  const child=spawn(binary,['--serve','--fixture',scenario,'--dev-ui'],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+  child.once('error',error=>{childError=error;});
+  for(const stream of [child.stdout,child.stderr]) stream?.on('data',(chunk:Buffer)=>{
+    outputBytes+=chunk.byteLength;
+    if(outputBytes>8192) {childError=new Error('fixture child exceeded bounded output');child.kill();}
   });
   try {
     await verifyWindowsListener(child);
-    const deadline = performance.now()+10000;
-    let ready = false;
-    while (performance.now()<deadline) {
-      if (childError) throw childError;
-      if (child.exitCode !== null || child.signalCode !== null) throw new Error('fixture child exited before readiness');
+    const deadline=performance.now()+10000;
+    let ready=false;
+    while(performance.now()<deadline) {
+      if(childError) throw childError;
+      if(child.exitCode!==null || child.signalCode!==null) throw new Error('fixture child exited before readiness');
       try {
-        const response = await nativeFetch('http://127.0.0.1:3000/api/v1/dashboard',{signal:AbortSignal.timeout(300),redirect:'error'});
-        if (response.ok) {
-          const body = await response.json() as {mode?:unknown;fixture?:{scenario?:unknown}};
-          if (body.mode === 'fixture' && body.fixture?.scenario === 'success') {ready=true;break;}
+        const response=await nativeFetch('http://127.0.0.1:3000/api/v1/dashboard',{signal:AbortSignal.timeout(300),redirect:'error'});
+        if(response.ok) {
+          const body=await response.json() as {mode?:unknown;fixture?:{scenario?:unknown}};
+          if(body.mode==='fixture' && body.fixture?.scenario===scenario) {ready=true;break;}
         }
-      } catch { /* Readiness polling is local, bounded and never calls a refresh. */ }
+      } catch { /* Bounded local read-only readiness; no refresh. */ }
       await pause(20);
     }
     expect(ready).toBe(true);
-    vite = await createServer({configFile});
+    vite=await createServer({configFile});
     await vite.listen();
-    const page = await nativeFetch(origin+'/',{signal:AbortSignal.timeout(3000),redirect:'error'});
+    const page=await nativeFetch(origin+'/',{signal:AbortSignal.timeout(3000),redirect:'error'});
     expect(page.status).toBe(200);
     expect(await page.text()).toContain('Rust Crypto Monitor');
 
-    const frontendRequests:string[]=[];
-    vi.stubGlobal('fetch', async (input:RequestInfo|URL,init?:RequestInit) => {
-      expect(input).toBe('/api/v1/dashboard');
-      frontendRequests.push(String(input));
-      return nativeFetch(origin+String(input),{...init,headers:{...init?.headers,Origin:origin}});
+    const frontendRequests:Array<{path:string;method:string}>=[];
+    const snapshots:Dashboard[]=[];
+    vi.stubGlobal('fetch',async(input:RequestInfo|URL,init?:RequestInit)=>{
+      expect(['/api/v1/dashboard','/api/v1/refresh']).toContain(input);
+      const method=init?.method ?? 'GET';
+      if(method==='POST') {
+        expect(input).toBe('/api/v1/refresh');
+        expect(init?.body).toBe('{}');
+        expect(new Headers(init?.headers).get('content-type')).toBe('application/json');
+      }
+      // Node's bridge supplies browser Origin for this smoke. Product JS never does.
+      expect(new Headers(init?.headers).has('Origin')).toBe(false);
+      frontendRequests.push({path:String(input),method});
+      const headers=new Headers(init?.headers);
+      headers.set('Origin',origin);
+      const response=await nativeFetch(origin+String(input),{...init,headers});
+      if(response.status===200) snapshots.push(await response.clone().json() as Dashboard);
+      return response;
     });
-    render(<App />);
-    expect(await screen.findByText(/API connected/i)).toBeTruthy();
+    render(<App/>);
+    expect(await screen.findByText('API connected',{}, {timeout:5000})).toBeTruthy();
     expect(screen.getByRole('heading',{name:'Synthetic fixture data'})).toBeTruthy();
-    expect(screen.getByText((_,element) => element?.tagName === 'P' && element.textContent === 'Fixture scenario: success')).toBeTruthy();
     expect(screen.getByText(/prices and timestamps are simulated/i)).toBeTruthy();
-    expect(screen.getByText(/No provider requests have been made/i)).toBeTruthy();
-    expect(frontendRequests).toEqual(['/api/v1/dashboard']);
-
-    for (const badOrigin of ['http://127.0.0.1:3000','null','http://localhost:5173']) {
-      const response = await nativeFetch(origin+'/api/v1/dashboard',{headers:{Origin:badOrigin},signal:AbortSignal.timeout(3000),redirect:'error'});
-      expect(response.status).toBe(403);
-      const body = await response.json() as {error:{code:string}};
-      expect(body.error.code).toBe('invalid_origin');
+    expect(frontendRequests).toEqual([{path:'/api/v1/dashboard',method:'GET'}]);
+    for(const market of snapshots[0]!.markets) {
+      expect(market.attempt_state).toBe('not_attempted');
+      expect(market.observation===null).toBe(scenario!=='stale');
     }
-    const noOrigin = await nativeFetch(origin+'/api/v1/dashboard',{signal:AbortSignal.timeout(3000),redirect:'error'});
-    expect(noOrigin.status).toBe(200);
-    // Native fetch normalizes Host; use a controlled HTTP client for this boundary.
-    expect(await wrongHostStatus()).toBe(403);
-    const directBad = await nativeFetch('http://127.0.0.1:3000/api/v1/dashboard',{headers:{Origin:'http://127.0.0.1:3000'},signal:AbortSignal.timeout(3000),redirect:'error'});
-    expect(directBad.status).toBe(403);
+    if(scenario==='stale') expect(within(screen.getByRole('article',{name:'BTC/USDT'})).getByText(/Stale/)).toBeTruthy();
+    else expect(document.querySelectorAll('.price-value')).toHaveLength(2);
+
+    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'Refresh markets'}));});
+    await waitFor(()=>expect(snapshots).toHaveLength(2),{timeout:5000});
+    await waitFor(()=>expect(screen.queryByText('Refreshing…')).toBeNull(),{timeout:5000});
+    expect(frontendRequests).toEqual([{path:'/api/v1/dashboard',method:'GET'},{path:'/api/v1/refresh',method:'POST'}]);
+    const refreshed=snapshots[1]!;
+    expect(refreshed.mode).toBe('fixture');
+    expect(refreshed.refresh_in_progress).toBe(false);
+    expect(BigInt(refreshed.refresh_allowed_in_ms)).toBeGreaterThan(0n);
+    expect((screen.getByRole('button',{name:'Refresh markets'}) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Estimated cooldown:/)).toBeTruthy();
+    const btc=within(screen.getByRole('article',{name:'BTC/USDT'}));
+    const eth=within(screen.getByRole('article',{name:'ETH/USDT'}));
+    if(scenario==='success' || scenario==='partial' || scenario==='stale') expect(btc.getByText('65000.12')).toBeTruthy();
+    if(scenario==='success' || scenario==='stale') expect(eth.getByText('2500.00000001')).toBeTruthy();
+    if(scenario==='success') expect(refreshed.markets.map(market=>market.attempt_state)).toEqual(['success','success']);
+    else if(scenario==='partial') {
+      expect(refreshed.markets.map(market=>market.attempt_state)).toEqual(['success','failed']);
+      expect(eth.getByText(/Market data request timed out/)).toBeTruthy();
+    } else if(scenario==='stale') {
+      expect(refreshed.markets.every(market=>market.state==='stale')).toBe(true);
+      expect(btc.getByText(/Stale/)).toBeTruthy();
+      expect(btc.getByText(/Market data request timed out/)).toBeTruthy();
+    } else if(scenario==='rate-limit') {
+      expect(refreshed.markets.map(market=>market.attempt_state)).toEqual(['failed','not_attempted']);
+      expect(refreshed.markets[0]!.last_error?.code).toBe('provider_rate_limited');
+      expect(screen.getByText(/Remaining ETH refresh was not attempted after BTC rate limiting/)).toBeTruthy();
+    } else {
+      expect(refreshed.markets.every(market=>market.attempt_state==='failed')).toBe(true);
+      expect(btc.getByText(scenario==='timeout' ? /Market data request timed out/ : /Market data provider unavailable.*503/)).toBeTruthy();
+    }
+    expect(screen.getByText(/health describes simulated local outcomes, not Binance availability/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('Binance online');
+    // Settle short local-display intervals; no extra client request or retry is admitted.
+    await act(async()=>{await pause(30);});
+    expect(frontendRequests).toHaveLength(2);
+
+    // Reuse one scenario for unchanged Host/Origin security regression; never POST here.
+    if(scenario==='success') {
+      for(const badOrigin of ['http://127.0.0.1:3000','null','http://localhost:5173']) {
+        const response=await nativeFetch(origin+'/api/v1/dashboard',{headers:{Origin:badOrigin},signal:AbortSignal.timeout(3000),redirect:'error'});
+        expect(response.status).toBe(403);
+        expect((await response.json() as {error:{code:string}}).error.code).toBe('invalid_origin');
+      }
+      expect((await nativeFetch(origin+'/api/v1/dashboard',{signal:AbortSignal.timeout(3000),redirect:'error'})).status).toBe(200);
+      expect(await wrongHostStatus()).toBe(403);
+      expect((await nativeFetch('http://127.0.0.1:3000/api/v1/dashboard',{headers:{Origin:'http://127.0.0.1:3000'},signal:AbortSignal.timeout(3000),redirect:'error'})).status).toBe(403);
+    }
     expect(child.exitCode).toBeNull();
   } finally {
-    await act(async () => cleanup());
+    await act(async()=>cleanup());
     vi.unstubAllGlobals();
-    if (vite) await vite.close();
+    if(vite) await vite.close();
     await reap(child);
   }
 },30000);
