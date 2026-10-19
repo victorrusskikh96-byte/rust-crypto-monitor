@@ -133,6 +133,7 @@ impl Snapshot {
     }
 }
 struct App {
+    fixture: Option<FixtureScenario>,
     authority: String,
     origin: String,
     snapshot: Mutex<Snapshot>,
@@ -158,6 +159,7 @@ impl App {
         let run_id = RandomState::new().hash_one(SystemTime::now());
         let last_now = Mutex::new(clock.now());
         Self {
+            fixture: None,
             origin: format!("http://{authority}"),
             authority,
             snapshot: Mutex::new(Snapshot {
@@ -191,6 +193,27 @@ impl App {
             #[cfg(test)]
             processing_entered: tokio::sync::Notify::new(),
         }
+    }
+    fn for_mode(authority: String, clock: Arc<dyn TimeSource>, mode: ServerMode) -> Self {
+        match mode {
+            ServerMode::Real => Self::new(authority, clock),
+            ServerMode::Fixture(scenario) => {
+                let mut app = Self::new(authority, fixture::clock(clock));
+                fixture::configure(&mut app, scenario);
+                app
+            }
+        }
+    }
+    fn annotate(&self, mut value: Value) -> Value {
+        if let Some(scenario) = self.fixture {
+            value["mode"] = json!("fixture");
+            value["provenance"] = json!("fixture");
+            value["fixture"] = json!({
+                "scenario": scenario.name(),
+                "notice": "Synthetic fixture data: prices and timestamps are simulated; health describes simulated local outcomes, not Binance availability."
+            });
+        }
+        value
     }
     fn notify_limits(&self) {
         #[cfg(test)]
@@ -561,8 +584,8 @@ impl ApiError {
         }
         json!({"error":error})
     }
-    fn response(self) -> Response {
-        let mut response = json_response(self.details().0, &self.envelope_value());
+    fn response(self, app: &App) -> Response {
+        let mut response = json_response(self.details().0, &app.annotate(self.envelope_value()));
         if let Self::RefreshCooldown(ms) = self
             && let Ok(value) = header::HeaderValue::from_str(&ms.div_ceil(1000).max(1).to_string())
         {
@@ -641,8 +664,8 @@ struct ConnectionState {
 async fn dispatch(State(connection): State<ConnectionState>, request: Request) -> Response {
     let result = handle(&connection, request).await;
     let response = match result {
-        Ok(value) => json_response(StatusCode::OK, &value),
-        Err(error) => error.response(),
+        Ok(value) => json_response(StatusCode::OK, &connection.app.annotate(value)),
+        Err(error) => error.response(&connection.app),
     };
     // Hyper-generated parser errors/100-continue never pass through this flag.
     connection.allowed_write.store(true, Ordering::Release);
@@ -895,12 +918,21 @@ async fn serve(
 /// Start one local server and one blocking transport owner. No implicit fetch.
 /// The caller reports a static diagnostic on error, never the underlying OS text.
 pub fn run() -> io::Result<()> {
+    run_mode(ServerMode::Real)
+}
+
+/// Explicit startup selection. Fixture mode never invokes the production factory.
+pub fn run_mode(mode: ServerMode) -> io::Result<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .max_blocking_threads(1)
         .build()?;
-    let app = Arc::new(App::new("127.0.0.1:3000".into(), Arc::new(MonotonicTime)));
-    let (worker, ready) = Worker::start(app.clone(), || {
+    let app = Arc::new(App::for_mode(
+        "127.0.0.1:3000".into(),
+        Arc::new(MonotonicTime),
+        mode,
+    ));
+    let (worker, ready) = start_worker(app.clone(), || {
         crate::market_data::transport::ReqwestTransport::new(
             crate::market_data::types::TimeoutConfig::default(),
         )
@@ -928,3 +960,40 @@ mod worker;
 use worker::Worker;
 #[cfg(test)]
 mod tests;
+
+// One selection point shared by executable startup and isolation tests.
+// The production closure is moved into the real worker only; fixture selection
+// drops it without invocation and starts the same bounded worker with local data.
+fn start_worker<T: crate::market_data::transport::HttpTransport + 'static>(
+    app: Arc<App>,
+    production: impl FnOnce() -> Result<T, MarketDataError> + Send + 'static,
+) -> io::Result<(Worker, worker::Ready)> {
+    match app.fixture {
+        Some(scenario) => Worker::start(app, move || Ok(fixture::FixtureTransport(scenario))),
+        None => Worker::start(app, production),
+    }
+}
+
+mod fixture;
+pub use fixture::FixtureScenario;
+
+/// Startup-only mode; invalid server arguments remain CLI usage failures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerMode {
+    Real,
+    Fixture(FixtureScenario),
+}
+impl ServerMode {
+    /// Accept only the exact server forms, before runtime/client/listener creation.
+    /// Other inputs go through existing CLI validation, which rejects invalid forms
+    /// before invoking the market-data fetch closure.
+    pub fn from_arguments(args: &[std::ffi::OsString]) -> Option<Self> {
+        match args {
+            [serve] if serve == "--serve" => Some(Self::Real),
+            [serve, fixture, scenario] if serve == "--serve" && fixture == "--fixture" => {
+                FixtureScenario::parse(scenario).map(Self::Fixture)
+            }
+            _ => None,
+        }
+    }
+}

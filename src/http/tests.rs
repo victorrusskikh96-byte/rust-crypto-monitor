@@ -871,3 +871,6 @@ async fn shutdown_stops_acceptance_and_finishes_bounded_drain_without_detached_t
 
 #[path = "worker_tests.rs"]
 mod worker_tests;
+
+#[path = "fixture_tests.rs"]
+mod fixture_tests;

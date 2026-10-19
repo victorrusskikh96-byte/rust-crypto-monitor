@@ -1,6 +1,6 @@
 # Rust Crypto Monitor — Project Context
 
-Snapshot: 2026-10-18 (M2b.2 locally verified; one Git checkpoint authorized; independent review pending). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization.
+Snapshot: 2026-10-19 (M2c.1 human-accepted; M2c checkpoint locally verified, publication authorized, independent review pending). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization.
 
 Evidence labels:
 - **VERIFIED** — confirmed by inspected artifacts or executed checks; scope is stated.
@@ -64,7 +64,11 @@ Evidence labels:
   outside Tokio; capacity-one channel and single admission, BTC then ETH, no retries.
   Monotonic 30-second starts/60-second freshness, conservative 418/429 cooldown;
   disconnect/HTTP timeout retain admission. Runtime shutdown precedes worker join.
-  Valuation copies one generation and excludes stale prices; fixture seams test-only.
+  Valuation copies one generation and excludes stale prices.
+- M2c --serve --fixture selects six fixed synthetic scenarios via a factory boundary
+  that excludes production client construction. Shared worker/admission/security;
+  simulated wall labels, monotonic freshness/cooldown and API fixture notices.
+  [Implementation/tests](../src/http/fixture.rs); [contracts/evidence](specs/0005-freelance-portfolio-mvp.md).
 - CLI validates one canonical OS argument before constructing production transport;
   stdout has exact price/USDT/provider and signed UTC Unix-seconds observation time.
   Exit codes: 0 success, 2 usage, 3 fetch/domain, 4 output. No new dependencies.
@@ -100,7 +104,7 @@ Evidence labels:
 | --- | --- | --- | --- | --- |
 | 0.1a–0.1d | Harness, Cargo, CI | VERIFIED: specs 0001/0002 say IMPLEMENTED | [0001](specs/0001-harness-bootstrap.md), [0002](specs/0002-ci-bootstrap.md), committed files | Prior human acceptance is recorded, not newly granted here |
 | 0.2a–0.2b | Adapter specification/architecture | VERIFIED: APPROVED / ACCEPTED | [0003](specs/0003-market-data-adapter.md), [ADR 0001](adr/0001-market-data-adapter.md) | Overall adapter closure remains pending |
-| 0.2c–0.2e | Domain, normalization, orchestration | VERIFIED: committed core and successful hosted CI | HEAD and hosted run below | Does not include production transport |
+| 0.2c–0.2e | Domain, normalization, orchestration | VERIFIED: committed core and successful hosted CI | Historical specification evidence | Does not include production transport |
 | 0.2f | Production HTTP transport | VERIFIED: committed in current HEAD | Git/source; historical local gate evidence | No newly verified live connectivity or hosted transport execution |
 | 0.2g / final 0.2 | Integration/security acceptance review | VERIFIED: recorded ACCEPT WITH LIMITATIONS | Spec evidence and W3.0 rerun: 60 passing tests | Reviewer recommendation; AC8/AC10 partial, human closure pending |
 | Security baseline / ADR 0002 | Mandatory security principle and requirements | VERIFIED: documents present, ADR ACCEPTED and committed | [Baseline](security/security-baseline.md), [ADR 0002](adr/0002-security-by-design.md) | Policy is not complete operational enforcement |
@@ -109,38 +113,35 @@ Evidence labels:
 | M1 CLI | One observation using existing adapter | Human-accepted with limitations at M2a request | [0006](specs/0006-read-only-cli.md), [tests](../tests/cli.rs) | 73-test baseline reproduced; current hosted CI/Linux/isolation gaps remain |
 | M2a | Pure exact portfolio valuation | Human-accepted before M2b.1 | [0007](specs/0007-exact-portfolio-valuation-domain.md), [tests](../tests/portfolio.rs) | No HTTP/serialization; caller supplies monotonic freshness metadata; conservative arithmetic capacity |
 | M2b.1 | Local HTTP foundation | Human-accepted; published checkpoint matches Git | [0005 evidence](specs/0005-freelance-portfolio-mvp.md), [HTTP tests](../src/http/tests.rs) | Historical 137-test baseline; Linux/operational gaps preserved |
-| M2b.2 | Bounded worker, refresh and state | VERIFIED locally; human acceptance pending | [Worker tests](../src/http/worker_tests.rs), 0005 evidence | 156 tests/four gates; no frontend, live calls, Linux or hosted verification |
+| M2b.2 | Bounded worker, refresh and state | Human-accepted in M2c request | [Worker tests](../src/http/worker_tests.rs), 0005 evidence | Independent source review/hosted success REPORTED by human; 156 baseline tests reproduced |
+| M2c | Operational offline fixture mode | Implementation; Technical Lead review pending | [Tests](../src/http/fixture_tests.rs), 0005 M2c evidence | No frontend, M2c hosted/Linux evidence or OS egress-denial proof |
 | Context v1 / W3.0 | Recovery entrypoint / career direction | VERIFIED: context v1 committed; W3.0 documentation prepared | Git and this file; portfolio roadmap | W3.0 accepted by human at consolidated checkpoint; no implementation authorization |
 
 ## 5. Current Repository State
 
-**VERIFIED** M2b.2 recovery: clean main at the requested published checkpoint
-`2a0881770356ebdb8791803364e9aec91eac1a72`; local origin/main matches.
-The 137-test baseline was reproduced before editing. Remote freshness/hosted CI
-was not revalidated; no hosted success for this uncommitted work is inferred.
+**VERIFIED** M2c recovery: clean main tracking origin/main, HEAD
+`981b33dd601dfbcedad66dc7366df67806e85263`; 156 baseline tests reproduced.
+**REPORTED** by human: M2b.2 accepted after independent source review and successful
+hosted CI. Hosted status/remote freshness was not independently re-queried in M2c.
 
-**VERIFIED** M2b.2 Windows: all four exact Cargo gates passed; 156 tests passed,
-zero failed/ignored (137 preserved +19 worker/state tests). Initial tests failed
-on missing worker/state APIs. An adversarial test caught Serde accepting [] for
-an empty struct; final refresh validation requires an actual empty JSON object.
-Synchronization gates cover disconnect, 504 with continuing work, shutdown before
-calls/between pairs, initialization errors/panic, dispatch failure and worker death.
-Core adapter, pure portfolio, CLI, prior external tests, manifest/lock, toolchain,
-CI and accepted ADRs are unchanged. Changes are uncommitted; index is unchanged.
-No provider call, automatic polling, frontend, commit, push or deployment.
+At pre-publication verification M2c changes were uncommitted; index empty. Exact command contract, six scenarios,
+security boundaries, test-first failure and final gate evidence are recorded in
+[0005 M2c](specs/0005-freelance-portfolio-mvp.md).
+**VERIFIED** M2c Windows: four mandatory Cargo gates passed; 169 tests passed,
+zero failed/ignored (156 preserved +13 added). Test-first compile failure and an
+initial Windows executable-lock build failure are recorded in 0005; the build
+and full suite then passed sequentially. Diff/document/link checks passed.
+Production adapter/portfolio/CLI runner, dependencies/lock, CI, toolchain and ADRs
+remain unchanged. No live provider request, frontend, commit, push or deployment.
+Resumed checkpoint: all four gates/169 tests and a separate parallel startup suite
+passed; compiled success-fixture smoke verified synthetic refresh/exact valuation,
+then stopped/reaped only its child. M2c.1 changed only tests/http_startup.rs and is
+Technical Lead-accepted. Existing scanners rerun; results/scope are in the checkpoint
+report and 0005. Publication SHA/hosted outcome are reported after publication.
 
-Fresh integrity-checked cargo-audit 0.22.2: 194 packages, zero vulnerabilities or
-warnings; RustSec 1338 advisories, revision 999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b,
-updated 2026-10-17T15:23:59Z. Secret-scan evidence/limits are in 0005.
-Scanners do not establish runtime isolation or complete dependency/native safety.
-
-Historical verification is retained in the relevant specifications: adapter/W3.0
-60 tests; M1 73; M2a 105; accepted M2b.1 137/four gates and loopback binary smoke.
-The older hosted run 39040626584 covered 1d43a876, not this working tree.
-[0003](specs/0003-market-data-adapter.md), [0006](specs/0006-read-only-cli.md),
-[0007](specs/0007-exact-portfolio-valuation-domain.md) and [0005](specs/0005-freelance-portfolio-mvp.md)
-retain scope, prior acceptance and operational limitations; no historical result
-is promoted to current proof. W3.0 and M1/M2a/M2b.1 are human-accepted.
+M1/M2a/M2b.1/M2b.2 and W3.0 are human-accepted. Earlier verification (adapter 60,
+M1 73, M2a 105, M2b.1 137, M2b.2 156 tests) remains in linked specifications.
+Full MVP acceptance and specification 0003 AC8/AC10 gaps are not closed by M2c.
 
 ## 6. Architecture Decisions
 
@@ -185,7 +186,7 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
 - Body cap bounds application-consumed bytes, not every HTTP/kernel buffer.
 - Blocking transport is owned outside Tokio. Worker join has no hard deadline
   across OS/DNS operations; actual OS Ctrl-C remains unverified.
-- Production fixture mode, dev Origin/Vite proxy and static assets remain deferred.
+- M2c fixture mode awaits review; dev Origin/Vite proxy and static assets remain deferred.
 - Hosted Ubuntu transport/scanner execution, confidential vulnerability intake,
   security CI, dependency monitoring and operational isolation remain incomplete.
 - **REPORTED:** cargo-audit 0.22.2 scanned 185 packages with zero advisories/warnings;
@@ -198,24 +199,19 @@ scan provenance and gaps; zero scanner findings do not establish complete securi
 
 ## 9. Next Authorized Actions
 
-- Completed: committed core; local transport/integration; security documentation;
-  recorded scanner evaluation; this context entrypoint and local verification.
-- W3.0 is human-accepted. The consolidated checkpoint request accepts 0.2f,
-  0.2g with limitations, 0.2h, Security Baseline v1 and Context Management v1;
-  it authorizes exactly one checkpoint commit and a non-force push to origin/main.
-  This does not establish complete AC1–AC10 satisfaction or authorize CLI/Solana
-  implementation, CI changes or new repository creation.
-- **VERIFIED:** Git now contains the adapter/security checkpoint in HEAD. Remaining
-  acceptance and verification gaps are not closed merely because it was committed.
-- Current authorization: final M2b.2 verification, exactly one commit named
-  feat: integrate bounded market refresh worker, one normal push to origin/main,
-  and hosted CI verification for that exact SHA; then stop for Technical Lead review.
-  Base: 2a0881770356ebdb8791803364e9aec91eac1a72. No further commits, source features,
-  dependencies, live provider smoke, frontend, fixture mode or deployment.
-  Earlier implementation-only restrictions record the pre-checkpoint scope.
-- M3 React Dashboard needs separate scope/approval; no frontend work has started.
-- Adapter AC8/AC10, hosted CI/security-tool/operational gaps remain. Optional Solana,
-  polling, credentials, trading and wallet operations remain outside current scope.
+- Current authorization: final M2c verification, exactly one commit named
+  feat: add isolated offline fixture scenarios, one normal non-force push to
+  origin/main and Actions verification for the exact new SHA; then stop for
+  Technical Lead review. Base: 981b33dd601dfbcedad66dc7366df67806e85263.
+- Include only the ten approved M2c files and accepted M2c.1 startup-test fix.
+  No additional features, dependencies, frontend, npm/Node, live Binance request,
+  deployment, trading, credentials, wallet/signing/mainnet capability.
+- Full MVP completion and M3 frontend dependency approval/implementation require
+  separate authorization. Vite Origin/proxy, static assets and browser workflows
+  remain future work; adapter AC8/AC10 and operational/security gaps remain.
+- This is a pre-publication recovery snapshot; the final checkpoint report records
+  the exact published SHA and hosted result. No second commit is authorized to
+  backfill those results, and publication does not establish milestone acceptance.
 
 ## 10. Context Recovery Instructions
 

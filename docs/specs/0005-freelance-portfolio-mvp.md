@@ -8,10 +8,12 @@ React/TypeScript/Vite and one bounded transport-owning worker accepted.
 Exact dependency versions remain candidates requiring implementation-stage
 compatibility/security verification. Approval does not mean implementation or
 portfolio readiness. At M1 approval, authorized work was only the CLI in [0006](0006-read-only-cli.md).
-M2a, M2b.1 and M2b.2 were separately authorized afterward. M2b.1 is accepted;
-M2b.2 is locally verified and awaits human review. The complete Full-Stack MVP
-remains unimplemented. Latest evidence below supersedes historical statements
-about absent worker/refresh behavior without erasing their original scope.
+M2a, M2b.1 and M2b.2 were separately authorized afterward and are human-accepted.
+The M2c request reports independent M2b.2 source review and successful hosted CI
+for published 981b33dd601dfbcedad66dc7366df67806e85263, and authorizes operational
+offline fixtures. M2c implementation evidence is appended below for review.
+The complete Full-Stack MVP remains unimplemented. Latest evidence supersedes
+historical absent-worker/fixture statements without erasing their original scope.
 M0/M0.1 DRAFT history is preserved below as planning evidence.
 
 ## Problem, product objective and target audience
@@ -928,3 +930,215 @@ The published SHA and exact hosted result are reported after publication, never
 inferred from an older run. Independent Technical Lead review, full-specification
 acceptance and historical operational limitations remain pending. No frontend,
 fixture startup, live provider request, additional commit or deployment is allowed.
+
+## M2c — Operational offline fixture mode (2026-10-19; Technical Lead review pending)
+
+### Authorization, recovery and acceptance plan
+
+The human's M2c request authorizes implementation of the existing FR4/AC7 fixture
+boundary, six fixed scenarios, deterministic tests, four Cargo gates and documentation.
+No new architecture or dependency is introduced. M2b.2 is human-accepted after
+independent source review and successful hosted CI, as reported in that request.
+Recovery independently verified clean main/origin tracking at published HEAD
+`981b33dd601dfbcedad66dc7366df67806e85263` and reproduced all 156 tests.
+Hosted CI was not re-queried during M2c. Historical evidence above retains its scope.
+
+Plan: test startup grammar/factory selection first; reuse the bounded worker and
+adapter with fixed in-memory responses; label simulated API data; test exact
+valuation, freshness, cooldown, reset/isolation and HTTP protections; run all gates;
+review unchanged dependencies and document evidence; stop for human review.
+
+Threat review before implementation: CLI arguments cross the new startup-selection
+boundary; wrong-mode construction could create unintended provider egress, and
+unlabeled synthetic data could masquerade as real financial/health evidence.
+Controls: closed typed scenario allowlist, validation before startup side effects,
+one explicit factory-selection boundary, no fixture URLs/files/environment settings,
+no production transport reference in the fixture implementation, startup-only
+immutable selection, fresh per-run snapshots and fixture labeling on all application
+responses. Existing SEC-02/03/06/08/09/12 controls, public-data-only scope, bounded
+resources and exact/stale-excluding portfolio arithmetic remain applicable.
+No new secrets, persistence, authentication, privileged or financial operations.
+
+Acceptance tests were written before implementation. The first command
+`cargo test --locked --all-features fixture_tests` failed to compile on the missing
+ServerMode/FixtureScenario/for_mode/start_worker APIs. After implementation, all
+11 focused tests passed. Two executable startup tests were also added.
+
+### Startup, isolation and output contract
+
+[src/main.rs](../../src/main.rs) accepts only `--serve` or
+`--serve --fixture <scenario>` as server commands; other input passes through the
+existing strict CLI validation (usage exit 2 before fetch). Both existing pair
+CLI commands remain unchanged. Supported exact case-sensitive identifiers:
+success, partial, stale, timeout, rate-limit, unavailable. Missing/extra/reordered,
+unknown, whitespace, URL/path and non-Unicode scenario input cannot start a server.
+
+[http::start_worker](../../src/http/mod.rs) is the single construction boundary used
+by run_mode and tests. Real mode invokes only its production factory; fixture mode
+does not invoke that factory and starts the existing Worker with FixtureTransport.
+[fixture.rs](../../src/http/fixture.rs) has no networking, HTTP client, file access,
+credentials, mutable script or retry path. Fixed tiny JSON successes normalize
+through the existing MarketDataAdapter; errors use existing typed classifications.
+Real-mode construction does not load synthetic observations or wrap its clock.
+The real destination, TLS, retry policy, adapter, portfolio, manifest and lockfile
+are unchanged. Existing run() remains a real-mode wrapper.
+
+The same 32-connection/8-handler server, 4 KiB body, parser/response bounds, Host and
+Origin checks, capacity-one worker channel, single-flight admission, 30-second start
+spacing, monotonic 60-second freshness and conservative rate-limit handling apply.
+Only explicit valid POST refresh simulates attempts; GET and valuation never do.
+All outcomes are immediate local simulations, without invented elapsed network time.
+
+| Scenario | Synthetic state and explicit refresh contract |
+| --- | --- |
+| success | Initially empty; refresh succeeds BTC then ETH at exact prices 65000.12 and 2500.00000001 |
+| partial | Initially empty; refresh succeeds BTC then simulates ETH Timeout |
+| stale | Initially two synthetic observations aged 60,001 ms, null attempt timestamps/not_attempted; refresh simulates both Timeout and retains stale prices |
+| timeout | Initially empty; refresh simulates Timeout for both pairs |
+| rate-limit | Initially empty; BTC simulates status 429 with Retry-After 120 seconds, stops before ETH, enforces 120-second cooldown |
+| unavailable | Initially empty; both pairs simulate ProviderUnavailable with status 503 |
+
+Wall timestamp labels advance from fixed simulated epoch milliseconds 1792195200000
+by monotonic elapsed process time. Stale seed timestamp is 1792195139999;
+last_success_at_ms refers only to that seeded observation. Neither a real nor a
+simulated attempt occurred at preload. Each explicit refresh repeats its fixed
+outcome after admission; no polling/retry, scripting or general fixture framework.
+
+All emitted fixture application responses, including errors/valuations, have
+mode=fixture, provenance=fixture and a fixture object with scenario and a static
+synthetic-data/simulated-local-health notice. Existing observation provenance is
+fixture. Existing provider=Binance is simulated schema attribution only; no live
+provider evidence or global availability claim. Real response schemas are unchanged.
+Parser failures/expired budgets can still close sockets without an application JSON
+response. No headers, URLs, upstream text or quantities are logged.
+README contains all six exact startup commands, manual refresh/valuation commands,
+synthetic timestamp semantics, expected states and retained cooldown/freshness.
+
+### Deterministic tests and verification
+
+[fixture_tests.rs](../../src/http/fixture_tests.rs): 11 tests cover exact startup
+forms and rejection; all six operational scenarios; a panic-on-call production
+factory in every fixture scenario; real factory invocation without execute; unchanged
+real/fixture/restart state isolation and snapshot conflicts; no initial attempts;
+complete/partial/zero/missing/stale valuations; exact golden total 11500.01200002
+USDT and 56.52/43.48 allocations; expiry at 60,000/60,001 ms; start admission at
+29,999/30,000 ms; cooldown at 119,999/120,000 ms; unattempted ETH; unchanged attempt
+metadata on local rejection; fixture labels on application errors; Host/Origin,
+unapproved Vite Origin, body/schema and handler-limit rejection.
+
+[http_startup.rs](../../tests/http_startup.rs): two added subprocess tests prove
+invalid fixture syntax exits 2 and all six valid scenario startups fail closed on
+an occupied fixed loopback port, with only static diagnostics.
+Prior 156 tests and assertions are preserved. Tests use the application's own
+loopback API, fixed synthetic inputs, controlled clocks and completion channels;
+no upstream test servers, live provider requests, credentials or arbitrary sleeps.
+
+All four mandatory Windows Cargo gates executed successfully:
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo build --locked --all-targets --all-features
+cargo test --locked --all-features
+```
+
+Final full suite: **169 passed, zero failed/ignored** (156 preserved +13 added).
+Breakdown: library 76, CLI 13, domain 13, fetch 15, HTTP startup 4, integration 1,
+normalization 15, portfolio 32; main/doc-tests zero cases.
+An initial all-target build failed with Windows LNK1104 while the earlier filtered
+test runner still owned an executable. After that runner completed, the exact
+build gate and full test gate passed sequentially without a source change.
+The initial failure is not counted as a passed gate.
+Locked dependency inspection: `cargo tree --locked --offline -e normal --depth 1`.
+Final document/link checks and `git diff --check` passed; no placeholder evidence
+remains. These checks do not establish live connectivity or OS egress isolation.
+
+Security review: factory exclusion tests plus source inspection establish fixture
+construction/egress isolation; this is not an OS firewall or packet-capture proof.
+All prior HTTP security/resource and exact arithmetic tests remain in the suite.
+Cargo.toml/Cargo.lock, dependency sources/versions/features, MSRV/toolchain, CI,
+native/build dependencies and licenses are unchanged; the locked direct dependency
+tree was inspected. No new unsafe code or dependency exposure. Advisory and secret
+scanners were not rerun; the dated M2b.2 reports above are historical evidence only.
+No current vulnerability-free graph, exhaustive source/native audit or complete
+secret absence is inferred.
+
+Remaining limits: local Windows evidence only for M2c; no hosted/Linux run,
+OS-enforced egress-denied execution, real provider smoke or actual Ctrl-C test.
+No prolonged loading/HTTP-504 latency simulation (existing controlled worker tests
+cover timeout/disconnect semantics). No browser UI, banner rendering, Vite Origin/
+proxy integration, assets, frontend packages or full MVP acceptance. Loopback is
+not authentication against hostile local processes. No commit, push or deployment.
+Backend fixture contracts are ready for Technical Lead review before separately
+authorized React Dashboard work; specification status remains APPROVED.
+
+## M2c.1 remediation and resumed M2c checkpoint (2026-10-19)
+
+The first M2c checkpoint stopped before commit/push when the two port-3000
+subprocess tests raced. Both previously accepted AddrInUse without owning a
+listener; after the competing test released its port, a later fixture child
+started serving and the unbounded output() wait hung. Only that verified child
+was stopped. The failed checkpoint did not establish 169 passing tests.
+
+The separately authorized M2c.1 fix changed only tests/http_startup.rs. A shared
+test-only mutex serializes both fixed-port tests. Each must successfully bind its
+own 127.0.0.1:3000 listener before spawning; external ownership fails clearly without
+a child. A reservation retains the listener through child exit, releasing it before
+the mutex. All four startup tests use a 30-second monotonic watchdog; timeout
+terminates and reaps only the owned Child, with a Drop guard for panic cleanup.
+File-backed stdout/stderr capture avoids pipe deadlocks; reads reject output over
+4 KiB per stream and the two files/directory are removed on normal return/unwind.
+The read cap is not an OS disk quota; removal is best effort. Known startup output
+remains empty stdout and one short static stderr line. OS spawn/termination/reaping
+have no hard real-time guarantee. No source/dependency/CI/toolchain changes.
+
+M2c.1 local evidence: targeted 4/4 startup tests passed, full 169/169 passed under
+normal parallel execution, five further parallel startup-suite repetitions passed,
+all four Cargo gates passed and no subprocess/listener/capture remained.
+The Technical Lead explicitly accepted this remediation in the resumed checkpoint
+request. Recovery hash comparison confirmed all other 45 repository files matched
+the pre-remediation snapshot. Other HTTP tests use ephemeral listeners; the CLI
+subprocess test uses invalid pair arguments and never serves.
+
+The Product Owner's authorization remains limited to exactly one commit named
+`feat: add isolated offline fixture scenarios`, one normal non-force push to
+origin/main and verification of Actions for that exact SHA. Approved scope is
+the ten M2c files, including the accepted test remediation and documentation.
+No amendment, corrective follow-up commit, frontend, dependency adoption, live
+provider request or deployment is authorized.
+
+Resumed checkpoint verification ran all four exact Cargo gates successfully:
+fmt --check, locked all-target/all-feature Clippy with -D warnings, locked
+all-target/all-feature build and locked all-feature test. **169 passed, zero
+failed/ignored**. A separate `cargo test --locked --all-features --test http_startup`
+passed 4/4 with normal parallel settings. No startup child, port-3000 listener or
+capture directory remained. Production adapter/TLS/retries, portfolio domain,
+Cargo.toml/Cargo.lock, CI and toolchain remain unchanged. Final documentation
+links/diff and staged-scope checks precede publication; no full-MVP closure.
+
+Existing integrity-checked cargo-audit 0.22.2 was rerun with advisory fetching:
+194 packages, exit 0, zero vulnerabilities/warnings. RustSec snapshot: 1338
+advisories, revision 999ec89d5d3f10f20be14750ec8c2d8b44e0ac9b, updated
+2026-10-17T15:23:59Z. No ignored advisories, target/severity filters, stale/no-fetch
+or yanked-check bypass. Existing Gitleaks 8.30.1 is used for final working-tree
+and reachable-history scans with embedded default rules, full redaction, no
+baseline/exceptions and allow-comments disabled; results are in the checkpoint
+report. No scanner installation. Reports remain outside the repository in the
+temporary rust-crypto-m2c-publication directory. Scanner findings are dated,
+scope-limited evidence, not enduring guarantees or a complete native/source audit.
+
+A bounded compiled-binary smoke passed for `--serve --fixture success`, after
+tests completed and port 3000 was verified free. A hidden child owned the verified
+127.0.0.1:3000 listener before any request. Initial GET had fixture/scenario notices
+and no observations. One explicit synthetic POST refresh produced BTC 65000.12
+and ETH 2500.00000001; valuation for BTC 0.1/ETH 2 returned exact decimal strings
+6500.012, 5000.00000002, total 11500.01200002 and allocations 56.52/43.48.
+The smoke stopped/reaped only its own child with no listener remaining; it did
+not test graceful Ctrl-C. No real-mode refresh or provider request. Factory-exclusion
+tests and source review remain the construction/egress evidence, not packet capture
+or OS-enforced network denial.
+
+The exact published SHA and hosted Formatting/Clippy/Build/Tests conclusion are
+reported after publication; this pre-publication evidence cannot claim future
+hosted success. M2c remains subject to independent review, specification status
+stays APPROVED, and M3 frontend dependency approval/implementation remains separate.

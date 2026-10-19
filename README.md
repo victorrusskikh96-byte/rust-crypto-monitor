@@ -2,18 +2,19 @@
 
 A working one-observation Rust CLI for public cryptocurrency market data, with an accepted future full-stack dashboard architecture. Development uses a human-reviewed, incremental specification-driven workflow with Codex.
 
-## Current phase — M2b.2 market worker (review pending)
+## Current phase — M2c offline fixture mode (review pending)
 
-The synchronous CLI and exact portfolio domain are preserved. The local HTTP API
-now supports explicit market refresh through one bounded synchronous worker and a
-mutable server-owned snapshot. M1/M2a/M2b.1 are human-accepted; M2b.2 is locally
-verified and awaits review. Specification 0005 remains APPROVED; the Full-Stack MVP
-is incomplete. No frontend, operational fixture mode, persistence or polling exists.
-No dependency, toolchain, CI, commit, push or deployment change is included.
-The Product Owner subsequently authorized one M2b.2 checkpoint commit/normal push
-and verification of Actions for its exact SHA. The verification below was
-reproduced before publication; the checkpoint report records the published result.
-Independent Technical Lead review and full MVP acceptance remain separate.
+The CLI, exact portfolio domain and bounded local API are preserved. M2b.2 is
+human-accepted after independent source review and successful hosted CI, as reported
+in the M2c request; published baseline: 981b33dd601dfbcedad66dc7366df67806e85263.
+M2c adds explicit operational synthetic scenarios without provider access.
+Specification 0005 remains APPROVED; the Full-Stack MVP is incomplete.
+No frontend, persistence, polling, dependency, toolchain or CI change is included.
+M2c.1 startup-test remediation is Technical Lead-accepted. The Product Owner
+authorizes one M2c checkpoint commit/normal push and exact-SHA Actions verification.
+This document records pre-publication evidence; the checkpoint report records the
+published SHA/hosted result. Independent M2c review and full MVP acceptance remain
+separate; deployment is not authorized.
 
 ## Exact portfolio domain (M2a)
 
@@ -148,6 +149,85 @@ loopback smoke passed. Its smoke process was terminated; actual OS Ctrl-C remain
 unverified. M2b.2 does not claim Linux/hosted execution, OS-enforced egress denial,
 live DNS/TLS/provider availability, frontend readiness or complete security.
 The backend is ready for milestone review before separately authorized M3 UI work.
+
+## Run an offline demonstration (M2c)
+
+Run exactly one scenario at a time; stop the server before selecting another:
+
+```powershell
+cargo run --locked -- --serve --fixture success
+cargo run --locked -- --serve --fixture partial
+cargo run --locked -- --serve --fixture stale
+cargo run --locked -- --serve --fixture timeout
+cargo run --locked -- --serve --fixture rate-limit
+cargo run --locked -- --serve --fixture unavailable
+```
+
+These commands never construct a production HTTP client or request Binance.
+They use fixed **synthetic data**, the existing adapter/portfolio domain and the
+same worker, loopback listener, Host/Origin validation and resource limits.
+Unknown, non-Unicode, reordered, missing or extra server arguments exit 2 before
+starting a runtime, client or listener. No URLs or fixture paths are accepted.
+Real CLI and `--serve` behavior remain unchanged; there is no fallback between modes.
+
+| Scenario | Initial GET | After explicit POST refresh |
+| --- | --- | --- |
+| success | Both unavailable/not_attempted | Both success; BTC 65000.12 and ETH 2500.00000001 USDT |
+| partial | Both unavailable/not_attempted | BTC success; ETH unavailable/failed with provider_timeout |
+| stale | Both stale with seeded synthetic observations; no attempts | Both remain stale; simulated provider_timeout attempts retain the old observations |
+| timeout | Both unavailable/not_attempted | Both unavailable/failed with provider_timeout |
+| rate-limit | Both unavailable/not_attempted | BTC simulated 429/provider_rate_limited with Retry-After 120 seconds; ETH remains not_attempted |
+| unavailable | Both unavailable/not_attempted | Both unavailable/failed with simulated 503/provider_unavailable |
+
+With the fixture server running, use the same manual refresh endpoint:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/api/v1/refresh' -ContentType 'application/json' -Headers @{ Origin = 'http://127.0.0.1:3000' } -Body '{}'
+$dashboard = Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/v1/dashboard'
+$payload = @{
+    snapshot_id = $dashboard.snapshot_id
+    quantities = @{ BTC = '0.1'; ETH = '2' }
+} | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/api/v1/valuation' -ContentType 'application/json' -Headers @{ Origin = 'http://127.0.0.1:3000' } -Body $payload
+```
+
+Every emitted fixture application response (including valuation and errors) adds
+`mode: "fixture"`, `provenance: "fixture"` and
+`fixture: {scenario, notice}`. The notice explicitly labels prices/timestamps as
+synthetic and health as simulated local outcomes, never global Binance availability.
+Observations retain the approved `provider: "Binance"` schema and each has
+`provenance: "fixture"`; this is simulated attribution, not provider evidence.
+
+Wall timestamp labels start at synthetic Unix milliseconds `1792195200000` and
+advance by monotonic process elapsed time. They are never current/live timestamps.
+The stale seed starts 60,001 ms old, with observation timestamp
+`1792195139999`, null last_attempt_at_ms and not_attempted. Its last_success_at_ms
+identifies the seeded synthetic observation only; no provider or simulated request
+occurred at startup. A manual stale refresh adds simulated failed attempt metadata.
+
+Completed simulated failures return HTTP 200 with per-pair errors. A second refresh
+returns local HTTP 429 during the unchanged 30-second start interval, or during the
+rate-limit scenario's 120-second cooldown; Retry-After is retained. No polling,
+automatic retry, network latency or prolonged loading is simulated. After a cooldown,
+another explicit refresh repeats the selected scenario. Restart resets all state.
+Freshness is still monotonic: quotes are fresh through exactly 60 seconds and stale
+afterward; reread and explicitly calculate using the latest snapshot ID.
+
+For success, BTC 0.1 plus ETH 2 yields exactly **11500.01200002 USDT**
+(6500.012 + 5000.00000002), allocations 56.52/43.48. Partial preserves BTC's exact
+value but withholds total/allocations for positive missing ETH. Stale positive
+holdings never enter a current total. Both zero quantities total exactly zero in
+every scenario, including without observations.
+
+M2c checkpoint verification: all four Cargo gates pass with 169 tests; the
+separate parallel startup suite passes. A compiled success-fixture smoke verified
+synthetic dashboard/refresh and the exact example valuation, then stopped/reaped
+only its own child. No provider requests. The accepted startup-test fix requires
+owned port reservations and supervises every startup child with a 30-second deadline.
+M2c verification and security evidence is recorded in
+[specification 0005](docs/specs/0005-freelance-portfolio-mvp.md).
+The React dashboard, persistent fixture banner, Vite integration and full MVP
+acceptance remain separate work.
 
 ## Run the CLI
 

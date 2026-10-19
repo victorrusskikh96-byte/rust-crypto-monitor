@@ -29,8 +29,8 @@ fn fetch_production(pair: Pair) -> Result<PriceObservation, MarketDataError> {
 
 fn main() -> ExitCode {
     let arguments: Vec<_> = std::env::args_os().skip(1).collect();
-    if arguments.len() == 1 && arguments[0] == "--serve" {
-        return match rust_crypto_monitor::http::run() {
+    if let Some(mode) = rust_crypto_monitor::http::ServerMode::from_arguments(&arguments) {
+        return match rust_crypto_monitor::http::run_mode(mode) {
             Ok(()) => ExitCode::SUCCESS,
             Err(_) => {
                 use std::io::Write;

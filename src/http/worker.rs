@@ -14,7 +14,7 @@ use tokio::sync::oneshot;
 pub(super) struct Command {
     completion: oneshot::Sender<Result<Value, ApiError>>,
 }
-type Ready = oneshot::Receiver<Result<(), ApiError>>;
+pub(super) type Ready = oneshot::Receiver<Result<(), ApiError>>;
 pub(super) struct Worker {
     app: Arc<App>,
     thread: Option<JoinHandle<()>>,
