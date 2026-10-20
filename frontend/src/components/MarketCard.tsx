@@ -41,7 +41,7 @@ export function MarketCard({ view }: MarketCardProps) {
 
       <dl className="market-details">
         <div>
-          <dt>Source / provenance</dt>
+          <dt>Data source</dt>
           <dd>{observation ? (fixture ? 'Binance-shaped synthetic fixture' : 'Binance public market data') : 'No observation received'}</dd>
         </div>
         <div>
@@ -49,7 +49,7 @@ export function MarketCard({ view }: MarketCardProps) {
           <dd>{market.last_success_at_ms === null ? 'None recorded' : <><span>{timestampLabel}</span><code>{market.last_success_at_ms}</code></>}</dd>
         </div>
         <div>
-          <dt>Last attempted refresh outcome</dt>
+          <dt>Latest refresh outcome</dt>
           <dd>{attemptLabel(market.attempt_state)}</dd>
         </div>
         {market.last_attempt_at_ms !== null && <div>

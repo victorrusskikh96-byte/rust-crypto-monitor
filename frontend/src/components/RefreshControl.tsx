@@ -13,7 +13,7 @@ export function RefreshControl({ disabled, pending, reconciling, cooldownSeconds
     <section className="panel refresh-panel" aria-labelledby="refresh-title">
       <div className="refresh-description">
         <h2 id="refresh-title">Manual refresh</h2>
-        <p>Request a new observation for both markets with one explicit action.</p>
+        <p>Fetch the latest BTC and ETH observations when you choose Refresh markets.</p>
         <p className="refresh-feedback" role="status" aria-live="polite">{message}</p>
         {cooldownSeconds !== null && <p className="cooldown-label">Estimated cooldown: {cooldownSeconds} seconds. The backend decides when another refresh is allowed.</p>}
         {reconciling && <p className="muted">Reading backend state. This read does not start another market refresh.</p>}

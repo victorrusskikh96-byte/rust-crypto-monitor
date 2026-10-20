@@ -22,7 +22,7 @@ export function PortfolioSummary({ result, outdated }: PortfolioSummaryProps) {
       <div className="asset-valuations">
         {result.holdings.map(holding => <AssetValuationRow key={holding.asset} holding={holding} />)}
       </div>
-      <p className="portfolio-result-note">Estimated from the selected market snapshot. Allocations are rounded independently to two decimal places.</p>
+      <p className="portfolio-result-note">Estimated from market data confirmed for this calculation. Allocations are rounded independently to two decimal places.</p>
     </div>
   );
 }

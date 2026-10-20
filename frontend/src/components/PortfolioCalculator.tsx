@@ -27,7 +27,7 @@ export function PortfolioCalculator({ quantities, errors, busy, available, messa
         </div>
         <span className="mode-badge">BTC + ETH / USDT</span>
       </div>
-      <p className="portfolio-description">Enter your holdings to estimate their value using the selected market snapshot.</p>
+      <p className="portfolio-description">Enter your holdings to estimate their value from the latest confirmed market data.</p>
       {synthetic && <p className="synthetic-label portfolio-fixture-label">Synthetic fixture data · demonstration estimates</p>}
       <div className="portfolio-layout">
         <form className="portfolio-form" noValidate onSubmit={event => { event.preventDefault(); if (!busy && available) onCalculate(); }}>
@@ -51,7 +51,7 @@ export function PortfolioCalculator({ quantities, errors, busy, available, messa
           {result ? <PortfolioSummary result={result} outdated={outdated} /> : <div className="portfolio-empty">
             <span className="portfolio-empty-mark" aria-hidden="true">=</span>
             <h3>Your portfolio, precisely valued</h3>
-            <p>Enter BTC and ETH quantities, then select Calculate portfolio. Exact values and allocations will appear here.</p>
+            <p>Enter BTC and ETH quantities, then choose Calculate portfolio. Exact values and allocations will appear here.</p>
             <span className="portfolio-state">Awaiting calculation</span>
           </div>}
         </div>

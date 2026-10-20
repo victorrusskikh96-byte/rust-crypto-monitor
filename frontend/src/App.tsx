@@ -209,11 +209,11 @@ export function App() {
             <h2>{connectivity === 'loading' ? 'Reading the current snapshot' : 'The snapshot is unavailable'}</h2>
             <p>Mode and provider observations are unavailable until a validated local API response is received.</p>
           </section>}
-        <MarketOverview markets={views} pending={pending === 'refresh'} />
         <RefreshControl disabled={disabled} pending={pending === 'refresh'} reconciling={pending === 'read'}
           cooldownSeconds={remaining > 0n ? ((remaining + 999n) / 1000n).toString() : null}
           message={feedback} onRefresh={() => { void execute('refresh'); }}
           onReconcile={canRead ? () => { void execute('read'); } : undefined} />
+        <MarketOverview markets={views} pending={pending === 'refresh'} />
         <PortfolioCalculator quantities={portfolio.quantities} errors={portfolio.errors}
           busy={portfolio.busy} available={portfolio.available} message={portfolio.message}
           result={portfolio.result} outdated={portfolio.outdated} fixture={dashboard?.mode === 'fixture'}

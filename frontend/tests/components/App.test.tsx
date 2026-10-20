@@ -39,6 +39,17 @@ async function clickRefresh() { await act(async()=>{fireEvent.click(refresh());}
 async function advance(milliseconds:number) { for(let left=milliseconds;left>0;) { const step=Math.min(left,1000); await act(async()=>{await vi.advanceTimersByTimeAsync(step);}); left-=step; } }
 
 describe('manual market dashboard',()=>{
+  it('renders exactly one manual refresh action before Market Overview',async()=>{
+    const mock=vi.fn().mockResolvedValue(reply(dashboard()));
+    await mount(mock);
+    const refreshRegions=screen.getAllByRole('region',{name:'Manual refresh'});
+    const refreshButtons=screen.getAllByRole('button',{name:'Refresh markets'});
+    const market=screen.getByRole('region',{name:'Market Overview'});
+    expect(refreshRegions).toHaveLength(1);
+    expect(refreshButtons).toHaveLength(1);
+    expect(refreshRegions[0]!.compareDocumentPosition(market) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(methods(mock)).toEqual(['GET']);
+  });
   it('renders two empty fixture cards without fake prices, charts, automatic refresh or polling',async()=>{
     vi.useFakeTimers();
     const mock=vi.fn().mockResolvedValue(reply(dashboard()));

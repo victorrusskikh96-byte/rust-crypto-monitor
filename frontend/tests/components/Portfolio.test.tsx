@@ -28,6 +28,22 @@ it('labels controlled text fields and associates field-specific validation witho
   }
   await fill('-1','1e2');await submit();expect(paths(mock)).toEqual(['/api/v1/dashboard']);
 });
+it('keeps B3 focus recovery deferred after an invalid explicit submission',async()=>{
+  const mock=vi.fn().mockResolvedValue(reply(dashboard()));await mount(mock);
+  calculate().focus();await submit();
+  expect(document.activeElement).toBe(calculate());
+  expect((screen.getByLabelText('BTC quantity') as HTMLInputElement).getAttribute('aria-invalid')).toBe('true');
+  expect((screen.getByLabelText('ETH quantity') as HTMLInputElement).getAttribute('aria-invalid')).toBe('true');
+  expect(paths(mock)).toEqual(['/api/v1/dashboard']);
+});
+it('describes currently accepted market data without implying snapshot selection',async()=>{
+  const mock=vi.fn().mockResolvedValueOnce(reply(observedDashboard())).mockResolvedValueOnce(reply(valuation()));
+  await mount(mock);await fill();await submit();
+  expect(text()).toMatch(/(?:latest confirmed|currently accepted) market data/i);
+  expect(text()).not.toMatch(/selected market snapshot/i);
+  expect(text()).toMatch(/synthetic fixture data/i);
+  for(const exact of ['6500.012','5000.00000002','11500.01200002','56.52%','43.48%']) expect(text()).toContain(exact);
+});
 it('preserves typed text and requires exactly one explicit calculation with accepted snapshot',async()=>{
   const pending=deferred<Response>();const mock=vi.fn().mockResolvedValueOnce(reply(observedDashboard())).mockReturnValueOnce(pending.promise);
   await mount(mock);await fill('000.10000000','2');expect(paths(mock)).toEqual(['/api/v1/dashboard']);

@@ -4,9 +4,9 @@ type AssetValuationRowProps = { holding: HoldingValuation };
 
 export function AssetValuationRow({ holding }: AssetValuationRowProps) {
   const reason = holding.reason === 'quote_missing'
-    ? 'Quote missing (quote_missing). No usable market observation is available.'
+    ? 'Quote unavailable. No usable market observation is available.'
     : holding.reason === 'quote_stale'
-      ? 'Quote stale (quote_stale). The observation is old or no longer confirmed usable for this calculation.'
+      ? 'Quote stale. The observation is too old or no longer confirmed usable for this calculation.'
       : null;
   return (
     <div className={`asset-valuation-row${reason ? ' asset-valuation-incomplete' : ''}`}>
