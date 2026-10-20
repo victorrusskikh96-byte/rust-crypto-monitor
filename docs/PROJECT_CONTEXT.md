@@ -1,6 +1,6 @@
 # Rust Crypto Monitor — Project Context
 
-Snapshot: 2026-10-19 (M3.1 published baseline verified; M3.2 locally implemented, Technical Lead review pending). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization.
+Snapshot: 2026-10-20 (M3.3 local work authorized on published M3.2 baseline; review pending). Recovery map only: reconcile with Git, approved specifications, accepted ADRs and current human authorization. Older checkpoint details below are historical.
 
 Evidence labels:
 - **VERIFIED** — confirmed by inspected artifacts or executed checks; scope is stated.
@@ -228,6 +228,22 @@ exact market cards, manual refresh, health, freshness, cooldown and bounded reco
 Final gates: Rust176/frontend139 tests, strict typecheck/build, six fixture integrations.
 [Report](M32_IMPLEMENTATION_REPORT.md) records genuine ownership, evidence and limits.
 Rust/locks/CI unchanged; local/uncommitted, awaiting Technical Lead review, no acceptance.
+
+## M3.3 current local checkpoint
+
+Product Owner authorizes local implementation/verification of the Portfolio
+Calculator, superseding older future-scope statements. Entry verified clean main,
+empty index, HEAD/local origin/main21e4b7b65f60e5ef5f99b45d1d5a1c500a375716.
+No remote fetch or hosted CI evidence is implied. Baseline suites reproduced:
+Rust176/frontend139. [0009](specs/0009-portfolio-calculator.md) records the exact
+existing Rust contract, acceptance criteria, interfaces and genuine agent ownership.
+[M3.3 report](M33_IMPLEMENTATION_REPORT.md) records final executed evidence/limits.
+Explicit calculation only, quantities in memory, exact string values, strict
+decoding and conservative generation/freshness invalidation. No Rust/lock/CI or
+dependency changes, live calls, installs, commits, push or deployment authorized.
+Persistence and presentation-animation/streaming proposals remain deferred in the
+[roadmap](PORTFOLIO_ROADMAP.md). Stop at independent Technical Lead review; no human
+acceptance, MVP closure or specification IMPLEMENTED status inferred.
 
 ## 10. Context Recovery Instructions
 

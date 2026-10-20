@@ -7,6 +7,8 @@ import { ModeNotice } from './components/ModeNotice';
 import { MarketOverview } from './components/MarketOverview';
 import { ProviderHealth } from './components/ProviderHealth';
 import { RefreshControl } from './components/RefreshControl';
+import { PortfolioCalculator } from './components/PortfolioCalculator';
+import { usePortfolio } from './usePortfolio';
 
 type Operation = 'initial' | 'refresh' | 'read';
 type Connectivity = 'loading' | 'connected' | 'disconnected';
@@ -42,6 +44,15 @@ export function App() {
   const alive = useRef(false);
   const operation = useRef<Operation | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const dashboard = snapshot?.dashboard;
+  const current = valid && connectivity === 'connected' && pending === null &&
+    !uncertain && dashboard?.service_state === 'ready' && dashboard.service_error === null && !dashboard.refresh_in_progress;
+  const portfolio = usePortfolio(snapshot, current, now, visible, disconnected => {
+    setValid(false);
+    setUncertain(true);
+    if (disconnected) setConnectivity('disconnected');
+    setFeedback('Portfolio calculation needs confirmed backend state. Use Read backend state; no calculation is retried.');
+  });
 
   function accept(dashboard: Dashboard, requestedAt: number, requestedEpoch: number) {
     const receivedAt = performance.now();
@@ -57,6 +68,7 @@ export function App() {
   async function execute(kind: Operation) {
     // A user refresh may supersede the initial read, never another user operation.
     if (!alive.current || (operation.current !== null && !(kind === 'refresh' && operation.current === 'initial'))) return;
+    portfolio.invalidate();
     controller.current?.abort();
     const current = ++generation.current;
     let abortController = new AbortController();
@@ -144,6 +156,7 @@ export function App() {
 
   useEffect(() => {
     const resume = () => {
+      portfolio.invalidate();
       const isVisible = document.visibilityState !== 'hidden';
       setVisible(isVisible);
       setNow(performance.now());
@@ -165,9 +178,6 @@ export function App() {
     return () => globalThis.clearTimeout(timer);
   }, [snapshot, cooldown, now, valid, visible]);
 
-  const dashboard = snapshot?.dashboard;
-  const current = valid && connectivity === 'connected' && pending === null &&
-    !uncertain && dashboard?.service_state === 'ready' && !dashboard.refresh_in_progress;
   const remaining = cooldown ? remainingCooldown(cooldown.milliseconds, cooldown.receivedAt, now) : 0n;
   const views = snapshot ? marketViews(snapshot, now, current, pending === 'refresh') :
     emptyMarkets.map(market => ({ market, stateLabel: 'Unavailable', ageLabel: 'Snapshot unavailable', previous: false }));
@@ -204,6 +214,10 @@ export function App() {
           cooldownSeconds={remaining > 0n ? ((remaining + 999n) / 1000n).toString() : null}
           message={feedback} onRefresh={() => { void execute('refresh'); }}
           onReconcile={canRead ? () => { void execute('read'); } : undefined} />
+        <PortfolioCalculator quantities={portfolio.quantities} errors={portfolio.errors}
+          busy={portfolio.busy} available={portfolio.available} message={portfolio.message}
+          result={portfolio.result} outdated={portfolio.outdated} fixture={dashboard?.mode === 'fixture'}
+          onChange={portfolio.onChange} onCalculate={portfolio.onCalculate} onCancel={portfolio.onCancel} />
         {dashboard ? (
           <>
             <ProviderHealth dashboard={dashboard} snapshotCurrent={current} pending={pending === 'refresh'} serviceMessage={serviceMessage} />

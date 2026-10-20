@@ -6,7 +6,7 @@ import { basename, join, resolve } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { expect, it, vi } from 'vitest';
 import App from '../../src/App';
-import type { Dashboard } from '../../src/api/contracts';
+import type { Dashboard, Valuation } from '../../src/api/contracts';
 
 const origin = 'http://127.0.0.1:5173';
 const workspace = process.cwd();
@@ -107,12 +107,16 @@ it.each(scenarios)('explicit React -> Vite -> Rust refresh uses only the %s synt
 
     const frontendRequests:Array<{path:string;method:string}>=[];
     const snapshots:Dashboard[]=[];
+    const valuations:Valuation[]=[];
     vi.stubGlobal('fetch',async(input:RequestInfo|URL,init?:RequestInit)=>{
-      expect(['/api/v1/dashboard','/api/v1/refresh']).toContain(input);
+      expect(['/api/v1/dashboard','/api/v1/refresh','/api/v1/valuation']).toContain(input);
       const method=init?.method ?? 'GET';
       if(method==='POST') {
-        expect(input).toBe('/api/v1/refresh');
-        expect(init?.body).toBe('{}');
+        if(input==='/api/v1/valuation') {
+          const body=JSON.parse(init?.body as string) as {snapshot_id:string;quantities:unknown};
+          expect(body.snapshot_id).toBe(snapshots.at(-1)!.snapshot_id);
+          expect(body.quantities).toEqual(valuations.length===0 ? {BTC:'0.1',ETH:'2'} : {BTC:'0',ETH:'0'});
+        } else {expect(input).toBe('/api/v1/refresh');expect(init?.body).toBe('{}');}
         expect(new Headers(init?.headers).get('content-type')).toBe('application/json');
       }
       // Node's bridge supplies browser Origin for this smoke. Product JS never does.
@@ -121,7 +125,10 @@ it.each(scenarios)('explicit React -> Vite -> Rust refresh uses only the %s synt
       const headers=new Headers(init?.headers);
       headers.set('Origin',origin);
       const response=await nativeFetch(origin+String(input),{...init,headers});
-      if(response.status===200) snapshots.push(await response.clone().json() as Dashboard);
+      if(response.status===200) {
+        if(input==='/api/v1/valuation') valuations.push(await response.clone().json() as Valuation);
+        else snapshots.push(await response.clone().json() as Dashboard);
+      }
       return response;
     });
     render(<App/>);
@@ -172,6 +179,51 @@ it.each(scenarios)('explicit React -> Vite -> Rust refresh uses only the %s synt
     await act(async()=>{await pause(30);});
     expect(frontendRequests).toHaveLength(2);
 
+    // Actual Rust arithmetic through the same React -> Vite path, never a UI mock.
+    const portfolio=within(screen.getByRole('region',{name:'Portfolio'}));
+    await act(async()=>{
+      fireEvent.change(portfolio.getByLabelText('BTC quantity'),{target:{value:'0.1'}});
+      fireEvent.change(portfolio.getByLabelText('ETH quantity'),{target:{value:'2'}});
+    });
+    expect(valuations).toHaveLength(0);
+    await act(async()=>{fireEvent.click(portfolio.getByRole('button',{name:'Calculate portfolio'}));});
+    await waitFor(()=>expect(valuations).toHaveLength(1),{timeout:5000});
+    await waitFor(()=>expect((portfolio.getByRole('button',{name:'Calculate portfolio'}) as HTMLButtonElement).disabled).toBe(false),{timeout:5000});
+    const valued=valuations[0]!;
+    expect(valued.snapshot_id).toBe(refreshed.snapshot_id);
+    expect(valued.mode).toBe('fixture');expect(valued.quote).toBe('USDT');expect(valued.estimate).toBe(true);
+    expect(valued.holdings.map(holding=>holding.quantity)).toEqual(['0.1','2']);
+    const portfolioText=screen.getByRole('region',{name:'Portfolio'}).textContent!;
+    if(scenario==='success') {
+      expect(valued.total).toBe('11500.01200002');
+      expect(valued.holdings.map(holding=>holding.value)).toEqual(['6500.012','5000.00000002']);
+      expect(valued.holdings.map(holding=>holding.allocation_pct)).toEqual(['56.52','43.48']);
+      for(const exact of ['65000.12','2500.00000001','6500.012','5000.00000002','11500.01200002','56.52%','43.48%']) expect(portfolioText).toContain(exact);
+    } else {
+      expect(valued.state).toBe('incomplete');expect(valued.total).toBeNull();
+      expect(valued.holdings.every(holding=>holding.allocation_pct===null)).toBe(true);
+      expect(portfolioText).toMatch(/incomplete/i);expect(portfolioText).not.toContain('11500.01200002');
+      if(scenario==='partial') {
+        expect(valued.holdings[0]!.value).toBe('6500.012');expect(valued.holdings[1]!.reason).toBe('quote_missing');
+        expect(portfolioText).toContain('6500.012');
+      } else expect(valued.holdings.every(holding=>holding.reason===(scenario==='stale'?'quote_stale':'quote_missing'))).toBe(true);
+    }
+    expect(portfolioText).toMatch(/synthetic/i);
+
+    // Zero quantities remain exactly zero even when every quote is missing/stale.
+    await act(async()=>{
+      fireEvent.change(portfolio.getByLabelText('BTC quantity'),{target:{value:'0'}});
+      fireEvent.change(portfolio.getByLabelText('ETH quantity'),{target:{value:'0'}});
+    });
+    await act(async()=>{fireEvent.click(portfolio.getByRole('button',{name:'Calculate portfolio'}));});
+    await waitFor(()=>expect(valuations).toHaveLength(2),{timeout:5000});
+    expect(valuations[1]!.state).toBe('complete');expect(valuations[1]!.total).toBe('0');
+    expect(valuations[1]!.holdings.every(holding=>holding.quantity==='0'&&holding.value==='0'&&holding.allocation_pct===null&&holding.reason===null)).toBe(true);
+    expect(frontendRequests).toEqual([
+      {path:'/api/v1/dashboard',method:'GET'},{path:'/api/v1/refresh',method:'POST'},
+      {path:'/api/v1/valuation',method:'POST'},{path:'/api/v1/valuation',method:'POST'},
+    ]);
+
     // Reuse one scenario for unchanged Host/Origin security regression; never POST here.
     if(scenario==='success') {
       for(const badOrigin of ['http://127.0.0.1:3000','null','http://localhost:5173']) {
@@ -189,5 +241,7 @@ it.each(scenarios)('explicit React -> Vite -> Rust refresh uses only the %s synt
     vi.unstubAllGlobals();
     if(vite) await vite.close();
     await reap(child);
+    await checkPortFree(3000);
+    await checkPortFree(5173);
   }
 },30000);

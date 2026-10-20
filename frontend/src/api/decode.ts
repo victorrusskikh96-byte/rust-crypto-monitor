@@ -1,4 +1,5 @@
-import type { Dashboard, Market, Observation, SafeError } from './contracts';
+import type { Dashboard, HoldingValuation, Market, Observation, SafeError, Valuation } from './contracts';
+import { canonicalQuantity, quantityError } from '../portfolio-model';
 
 const fixtureNotice = 'Synthetic fixture data: prices and timestamps are simulated; health describes simulated local outcomes, not Binance availability.';
 const scenarios = ['success', 'partial', 'stale', 'timeout', 'rate-limit', 'unavailable'];
@@ -141,4 +142,54 @@ export function decodeErrorEnvelope(input: unknown): SafeError {
   keys(data, ['error', ...(isFixture ? ['mode', 'provenance', 'fixture'] : [])]);
   if (isFixture) fixture(data);
   return safeError(data.error);
+}
+
+function decimal(value: unknown, positive = false): value is string {
+  if (!text(value, 59) || !/^(0|[1-9][0-9]*)(?:\.[0-9]{0,27}[1-9])?$/.test(value)) return false;
+  const coefficient = BigInt(value.replace('.', ''));
+  return coefficient <= 79228162514264337593543950335n && (!positive || coefficient > 0n);
+}
+
+function holdingValuation(input: unknown, asset: 'BTC' | 'ETH'): HoldingValuation {
+  const data = object(input);
+  keys(data, ['asset', 'quantity', 'price', 'value', 'allocation_pct', 'reason']);
+  check(data.asset === asset && typeof data.quantity === 'string');
+  check(quantityError(data.quantity) === null && canonicalQuantity(data.quantity) === data.quantity);
+  check(data.price === null || decimal(data.price, true));
+  check(data.value === null || decimal(data.value));
+  check(data.allocation_pct === null || (text(data.allocation_pct, 6) &&
+    /^(?:[0-9]|[1-9][0-9])\.[0-9]{2}$|^100\.00$/.test(data.allocation_pct)));
+  check(data.reason === null || data.reason === 'quote_missing' || data.reason === 'quote_stale');
+  if (data.quantity === '0') check(data.value === '0' && data.reason === null);
+  else if (data.reason !== null) {
+    check(data.value === null && data.allocation_pct === null);
+    check(data.reason === 'quote_missing' ? data.price === null : data.price !== null);
+  } else check(data.price !== null && data.value !== null && data.value !== '0');
+  return data as unknown as HoldingValuation;
+}
+
+export function decodeValuation(input: unknown): Valuation {
+  const data = object(input);
+  const isFixture = data.mode === 'fixture';
+  keys(data, ['snapshot_id', 'quote', 'state', 'holdings', 'total', 'allocation_rounding', 'estimate',
+    ...(isFixture ? ['mode', 'provenance', 'fixture'] : [])]);
+  check(text(data.snapshot_id) && /^[\x21-\x7e]+$/.test(data.snapshot_id));
+  check(data.quote === 'USDT' && (data.state === 'complete' || data.state === 'incomplete'));
+  check(data.allocation_rounding === 'independent_half_even_2dp' && data.estimate === true);
+  if (isFixture) fixture(data);
+  check(Array.isArray(data.holdings) && data.holdings.length === 2);
+  const holdings = [holdingValuation(data.holdings[0], 'BTC'), holdingValuation(data.holdings[1], 'ETH')];
+  check(data.total === null || decimal(data.total));
+  if (data.state === 'incomplete') {
+    check(data.total === null && holdings.some(holding => holding.reason !== null));
+    check(holdings.every(holding => holding.allocation_pct === null));
+  } else {
+    check(data.total !== null && holdings.every(holding => holding.reason === null && holding.value !== null));
+    const allZero = holdings.every(holding => holding.quantity === '0');
+    check((data.total === '0') === allZero);
+    check(holdings.every(holding => allZero ? holding.allocation_pct === null : holding.allocation_pct !== null));
+    // These are structural zero invariants, not a duplicate valuation calculation.
+    if (!allZero) check(holdings.every(holding => holding.quantity !== '0' || holding.allocation_pct === '0.00'));
+  }
+  return data as unknown as Valuation;
 }

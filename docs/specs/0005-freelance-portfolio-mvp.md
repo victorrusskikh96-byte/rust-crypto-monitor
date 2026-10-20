@@ -1237,3 +1237,34 @@ lock changes, CI changes, real provider requests, polling, portfolio UI, trading
 deployment, commit or push. Stop at local review. This supersedes earlier M3.2
 future-scope wording only for this authorized slice. M3.2 is not accepted;
 specification 0005 remains APPROVED, not IMPLEMENTED.
+
+## M3.3 approved local Portfolio Calculator scope (2026-10-20)
+
+The Product Owner explicitly authorizes local calculator implementation and
+verification on clean main at HEAD/local origin/main
+21e4b7b65f60e5ef5f99b45d1d5a1c500a375716. This supersedes older portfolio-UI
+deferral for this bounded slice. [Specification 0009](0009-portfolio-calculator.md)
+records the actual existing Rust valuation schema, acceptance criteria, component
+interfaces, exclusive ownership and security controls before implementation.
+[The M3.3 report](../M33_IMPLEMENTATION_REPORT.md) records exact file inventory,
+genuine delegation, executed verification and limitations.
+
+Explicit in-memory BTC/ETH inputs call the existing local Rust valuation endpoint;
+React preserves exact quantities/USDT values/allocations as strings. Strict decoding,
+bounded cancellation, edit/snapshot/freshness invalidation, missing/stale outcomes
+and safe conflict/arithmetic errors are implemented. The actual success fixture
+returns total11500.01200002 USDT and allocations56.52%/43.48%. All six fixture paths
+also verify exact zero holdings and clean owned-process shutdown.
+
+Final local gates pass: all four Cargo gates/176 tests, strict TypeScript checking
+with skipLibCheck=false, production build and258 frontend tests (139 baseline plus
+119 new). No Rust/API/lock/dependency/CI changes or installations. Browser visual/
+screen-reader checks, Linux/hosted reproduction and fresh Rust advisory scan remain
+unverified; the report retains historical operational limitations.
+
+Optional opt-in quantity persistence remains a future MVP requirement, unimplemented
+in M3.3. The roadmap separately proposes confirmed-observation presentation effects
+and true streaming; no storage, streaming, animation, credentials, wallet or trading
+capability is added. No live provider calls, commit, push or deployment. Stop at
+local Technical Lead review. M3.3 acceptance and full MVP closure remain pending;
+specification 0005 stays APPROVED, not IMPLEMENTED.

@@ -1,4 +1,28 @@
 export type FixtureScenario = 'success' | 'partial' | 'stale' | 'timeout' | 'rate-limit' | 'unavailable';
+export type Asset = 'BTC' | 'ETH';
+export type Quantities = Record<Asset, string>;
+export type QuantityErrors = Partial<Record<Asset, string>>;
+export interface HoldingValuation {
+  asset: Asset;
+  quantity: string;
+  price: string | null;
+  value: string | null;
+  allocation_pct: string | null;
+  reason: 'quote_missing' | 'quote_stale' | null;
+}
+export interface ValuationBase {
+  snapshot_id: string;
+  quote: 'USDT';
+  state: 'complete' | 'incomplete';
+  holdings: readonly HoldingValuation[];
+  total: string | null;
+  allocation_rounding: 'independent_half_even_2dp';
+  estimate: true;
+}
+export type Valuation = ValuationBase & (
+  { mode?: never } |
+  { mode: 'fixture'; provenance: 'fixture'; fixture: { scenario: FixtureScenario; notice: string } }
+);
 export type ServiceState = 'ready' | 'failed' | 'stopping';
 export interface SafeError {
   code: string;

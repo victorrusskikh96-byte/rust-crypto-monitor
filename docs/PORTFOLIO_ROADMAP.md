@@ -64,6 +64,36 @@ Health are implemented locally under [specification 0008](specs/0008-market-dash
 No portfolio calculator, release or deployment is included. Acceptance remains
 pending Technical Lead review; the complete Project A MVP is not finished.
 
+## M3.3 local scope and future proposals (2026-10-20)
+
+The Product Owner authorizes local Portfolio Calculator implementation and
+verification on21e4b7b65f60e5ef5f99b45d1d5a1c500a375716 under
+[specification0009](specs/0009-portfolio-calculator.md). Explicit quantities and
+snapshot-bound Rust valuation extend the existing market dashboard. Stop at local
+Technical Lead review; no publication or release acceptance is implied.
+
+**Deferred quantity persistence:** retain specification0005's future opt-in saving,
+restoration, validation, clear action and safe storage-failure behavior. M3.3 uses
+in-memory quantities only. A later approved slice must define privacy and opt-in
+controls; never persist prices, snapshots, provider metadata or valuation results.
+
+**Future price animation proposal — outside M3.3:** the Product Owner requests
+polished dynamic price presentation. Separate these capabilities before approval:
+
+- A: Presentation animation triggered only by a confirmed change in an actual
+  observation. Preserve exact final decimals and provenance; define accessibility,
+  reduced-motion behavior and clear observation timing. Do not present artificial
+  monetary intermediate values as real observations or invent direction/ticks.
+- B: True real-time streaming requires a separately specified market-data transport,
+  rate-limit strategy, reconnect/cancellation lifecycle, freshness and failure policy,
+  security/resource review and explicit authorization. A presentation effect does
+  not establish a streaming capability.
+
+No random fluctuations, fabricated changes or simulated live behavior without
+explicit synthetic labeling. No animation, WebSockets, streaming, charts or new
+dependency is authorized or implemented in M3.3. This is a proposal for a separate
+future milestone, not an amendment authorizing the current implementation.
+
 ## Project A — Rust Crypto Monitor
 
 An off-chain Rust engineering portfolio project in this repository. Demonstrate

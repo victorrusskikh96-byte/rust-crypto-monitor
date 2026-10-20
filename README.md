@@ -2,16 +2,19 @@
 
 A working one-observation Rust CLI for public cryptocurrency market data, with an accepted future full-stack dashboard architecture. Development uses a human-reviewed, incremental specification-driven workflow with Codex.
 
-## Current phase — M3.2 Market Dashboard (local review pending)
+## Current phase — M3.3 Portfolio Calculator (local review pending)
 
-The Product Owner authorizes local M3.2 on published M3.1 baseline
-`e1fe014336a0932e9d287c926873d24285eb83ff`. Market Overview presents exactly BTC/USDT
-and ETH/USDT, manual refresh and observed Provider Health. Exact price strings and
-synthetic provenance are preserved. No portfolio UI, dependency changes, live calls, CI
-changes or deployment are included. M3.2 awaits independent Technical Lead review;
-specification 0005 remains APPROVED and the Full-Stack MVP is incomplete.
-See the [specification](docs/specs/0008-market-dashboard.md) and
-[implementation report](docs/M32_IMPLEMENTATION_REPORT.md).
+The Product Owner authorizes local M3.3 on baseline
+`21e4b7b65f60e5ef5f99b45d1d5a1c500a375716`. The market dashboard now includes
+manual BTC/ETH holdings and exact estimated USDT values/allocations from the existing
+Rust valuation endpoint. Exact strings and synthetic provenance are preserved.
+Quantities stay in memory; no persistence, automatic calculation, animation,
+dependency/CI changes or deployment. Independent Technical Lead review remains
+pending; specification 0005 stays APPROVED and the Full-Stack MVP is incomplete.
+See [specification 0009](docs/specs/0009-portfolio-calculator.md) and the
+[M3.3 report](docs/M33_IMPLEMENTATION_REPORT.md). Historical M3.2 evidence remains
+in its [specification](docs/specs/0008-market-dashboard.md) and
+[report](docs/M32_IMPLEMENTATION_REPORT.md).
 
 ## Fixture-only frontend development
 
@@ -48,6 +51,34 @@ observation state/age, source and last attempt/success metadata. Provider Health
 reports simulated outcomes separately from API connectivity and worker readiness.
 Other approved fixture scenarios demonstrate partial, stale, timeout, rate-limit
 and unavailable outcomes without external provider requests.
+
+In **Portfolio**, enter **0.1** in BTC quantity and **2** in ETH quantity, then choose
+**Calculate portfolio**. The actual Rust success fixture returns:
+
+| Asset | Quantity | Price (USDT) | Value (USDT) | Allocation |
+| --- | --- | --- | --- | --- |
+| BTC | 0.1 | 65000.12 | 6500.012 | 56.52% |
+| ETH | 2 | 2500.00000001 | 5000.00000002 | 43.48% |
+
+Estimated total: **11500.01200002 USDT**. No monetary rounding happens in React.
+Inputs accept unsigned ASCII decimals, at most32 characters/eight fractional digits,
+from0 through1000000 inclusive. Enter0 for an absent holding; empty is invalid.
+Typed text remains unchanged, even when Rust returns normalized quantities.
+
+To demonstrate incomplete results, stop your Rust fixture and restart with
+`--fixture partial` or `--fixture stale` in the same command position. Reload the
+page, refresh explicitly and calculate again. Missing/stale positive holdings
+withhold total/allocations while preserving any available exact asset value.
+With both inputs0, Calculate returns total0 even before Refresh markets.
+Do not run the default real-provider server for these offline demonstrations.
+
+Editing, refreshing, reading a new snapshot, quote expiry and tab resume mark a
+previous valuation **Outdated** and cancel obsolete requests. Recalculate explicitly;
+the UI never submits quantities on edits or refresh. A409 requires **Read backend
+state**, followed by another explicit calculation. Arithmetic limitations do not
+substitute rounded values. **Cancel calculation** cancels the local waiter.
+Valuation has a35-second body-inclusive deadline and never fetches provider data.
+Quantities go only to the local Rust API and disappear when the page is reloaded.
 
 No automatic market requests occur on load or tab resume. Refresh is disabled while
 pending, busy, uncertain or in server cooldown; countdown expiry never submits it.

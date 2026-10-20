@@ -18,10 +18,12 @@ it('keeps exact financial strings, fixed endpoints and explicit-only provider re
   expect(financial).not.toMatch(/Math\.(?:round|floor|ceil|trunc)|\.toFixed\s*\(/);
   expect(source).not.toMatch(/https?:\/\//);
   expect(source).not.toMatch(/setInterval\s*\(|localStorage|sessionStorage|WebSocket\s*\(/);
+  expect(source).not.toMatch(/indexedDB|document\.cookie|sendBeacon|EventSource\s*\(/);
   expect(source).not.toMatch(/dangerouslySetInnerHTML/);
   const client=files.find(file=>file.path.endsWith(join('api','client.ts')))!.text;
   expect(client).toContain("'/api/v1/dashboard'");
   expect(client).toContain("'/api/v1/refresh'");
+  expect(client).toContain("'/api/v1/valuation'");
   expect(client).toContain("credentials: 'omit'");
   expect(client).not.toMatch(/Origin\s*:/);
   for(const file of files.filter(file=>!file.path.endsWith(join('api','client.ts')))) expect(file.text).not.toMatch(/\bfetch\s*\(/);
@@ -34,6 +36,7 @@ it('uses semantic accessible responsive structure and CSS-only assets at narrow 
   expect(css).toMatch(/min-width:\s*0/);
   expect(css).toMatch(/@media/);
   expect(css).not.toMatch(/https?:|@import|url\s*\(/);
+  expect(css).not.toMatch(/@keyframes|\banimation\s*:/);
   const card=readFileSync(new URL('components/MarketCard.tsx',root),'utf8');
   expect(card).toContain('<article');
   expect(card).toContain('aria-labelledby');
