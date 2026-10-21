@@ -9,7 +9,8 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "build": "vite build",
-    "test": "vitest run --maxWorkers=2"
+    "test": "vitest run --maxWorkers=2",
+    "test:browser": "node tests/browser/run.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

@@ -135,6 +135,56 @@ See the [M3.1 report](docs/M31_IMPLEMENTATION_REPORT.md) and
 [specification evidence](docs/specs/0005-freelance-portfolio-mvp.md) for executed
 checks and remaining limitations. M3.2 evidence is recorded in its separate report;
 acceptance and the remaining portfolio MVP require Technical Lead review.
+
+### Real Chrome browser regression harness
+
+After the required Cargo build has produced the existing debug fixture binary and
+the reviewed frontend lock is installed, run the separate real-browser suite from
+the repository root:
+
+```powershell
+npm run test:browser --prefix frontend
+```
+
+Prerequisites are Windows, Node.js 24.22.0, the existing frontend installation,
+and Google Chrome installed in a standard per-machine or per-user location. The
+harness never installs Chrome or packages. It starts only its own synthetic Rust
+fixture, Vite, and isolated headless Chrome processes; ports 3000 and 5173 must be
+free. Chrome uses a loopback-only ephemeral DevTools port and a temporary profile.
+
+The suite serially covers all six fixtures, the success flow at 320, 375, 768,
+1024, and 1440 by 1000, exact portfolio strings, both-zero valuation, B3 form-focus
+recovery, API request counts, local-only network traffic, runtime exceptions, and
+process/listener cleanup. CDP Fetch interception is enabled before navigation. It
+permits ordinary GET page/assets only through `http://127.0.0.1:5173`, permits only
+the approved API routes and methods through that Vite origin, and blocks direct
+port 3000, external, and unexpected API requests before transport. Network events
+independently verify request paths, methods, and counts. The known rejected local Vite
+development-client WebSocket remains an explicit observation; Vite security is not
+changed. Screenshots are written to a reported `rust-crypto-m34-b4-*` directory
+under the operating-system temporary directory; Chrome profiles are removed.
+
+Maintainers can exercise the same post-readiness failure and cleanup path directly:
+
+```powershell
+Set-Location frontend
+node tests/browser/run.mjs --intentional-failure
+```
+
+That control must exit nonzero with `intentional failure control` and leave no
+3000, 5173, or reported CDP listener. The harness does not use live Binance data,
+retry failed market operations, or establish visual equivalence, accessibility
+conformance, production readiness, screen-reader behavior, or non-Windows support.
+
+The dependency-free focused controls exercise the same request policy used by CDP
+interception and prove combined primary/cleanup failure reporting without starting
+Chrome or sending a request:
+
+```powershell
+Set-Location frontend
+node tests/browser/run.mjs --focused-tests
+node tests/browser/run.mjs --combined-failure-control
+```
 ## Exact portfolio domain (M2a)
 
 [portfolio.rs](src/portfolio.rs) exposes validated Quantity, explicit BTC/ETH
