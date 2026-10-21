@@ -1,4 +1,6 @@
+import { useLayoutEffect, useRef, type FormEvent } from 'react';
 import type { Asset, Quantities, QuantityErrors, Valuation } from '../api/contracts';
+import { quantityErrors } from '../portfolio-model';
 import { HoldingsInput } from './HoldingsInput';
 import { PortfolioSummary } from './PortfolioSummary';
 
@@ -18,6 +20,25 @@ type PortfolioCalculatorProps = {
 
 export function PortfolioCalculator({ quantities, errors, busy, available, message, result, outdated, fixture, onChange, onCalculate, onCancel }: PortfolioCalculatorProps) {
   const synthetic = fixture || result?.mode === 'fixture';
+  const BTC = useRef<HTMLInputElement>(null);
+  const ETH = useRef<HTMLInputElement>(null);
+  const pendingFocus = useRef<Asset | null>(null);
+
+  useLayoutEffect(() => {
+    const asset = pendingFocus.current;
+    if (asset === null || errors[asset] === undefined) return;
+    pendingFocus.current = null;
+    (asset === 'BTC' ? BTC : ETH).current?.focus();
+  });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy || !available) return;
+    const invalid = quantityErrors(quantities);
+    pendingFocus.current = invalid.BTC ? 'BTC' : invalid.ETH ? 'ETH' : null;
+    onCalculate();
+  }
+
   return (
     <section className="portfolio-section panel" aria-labelledby="portfolio-title">
       <div className="section-heading portfolio-section-heading">
@@ -30,11 +51,11 @@ export function PortfolioCalculator({ quantities, errors, busy, available, messa
       <p className="portfolio-description">Enter your holdings to estimate their value from the latest confirmed market data.</p>
       {synthetic && <p className="synthetic-label portfolio-fixture-label">Synthetic fixture data · demonstration estimates</p>}
       <div className="portfolio-layout">
-        <form className="portfolio-form" noValidate onSubmit={event => { event.preventDefault(); if (!busy && available) onCalculate(); }}>
+        <form className="portfolio-form" noValidate onSubmit={submit}>
           <fieldset>
             <legend>Holdings</legend>
-            <HoldingsInput asset="BTC" value={quantities.BTC} error={errors.BTC} onChange={onChange} />
-            <HoldingsInput asset="ETH" value={quantities.ETH} error={errors.ETH} onChange={onChange} />
+            <HoldingsInput asset="BTC" value={quantities.BTC} error={errors.BTC} inputRef={BTC} onChange={onChange} />
+            <HoldingsInput asset="ETH" value={quantities.ETH} error={errors.ETH} inputRef={ETH} onChange={onChange} />
           </fieldset>
           <div className="portfolio-actions">
             <button className="calculate-button" type="submit" disabled={busy || !available} aria-label="Calculate portfolio">{busy ? 'Calculating…' : 'Calculate portfolio'}</button>

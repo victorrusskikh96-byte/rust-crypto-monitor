@@ -18,23 +18,48 @@ async function submit() {await act(async()=>{fireEvent.click(calculate());});}
 const paths=(mock:ReturnType<typeof vi.fn>)=>mock.mock.calls.map(call=>call[0]);
 async function advance(milliseconds:number) {for(let left=milliseconds;left>0;){const step=Math.min(1000,left);await act(async()=>{await vi.advanceTimersByTimeAsync(step);});left-=step;}}
 
-it('labels controlled text fields and associates field-specific validation without sending quantities',async()=>{
+it('focuses BTC for empty quantities while preserving associated errors and sending no valuation POST',async()=>{
   const mock=vi.fn().mockResolvedValue(reply(dashboard()));await mount(mock);await submit();
+  expect(document.activeElement).toBe(screen.getByLabelText('BTC quantity'));
   for(const label of ['BTC quantity','ETH quantity']) {
     const input=screen.getByLabelText(label) as HTMLInputElement;
+    expect(input.value).toBe('');
     expect(input.type).toBe('text');expect(input.inputMode).toBe('decimal');expect(input.getAttribute('aria-invalid')).toBe('true');
     const errorId=input.getAttribute('aria-describedby')!.split(' ').find(id=>document.getElementById(id)?.getAttribute('role')==='alert');
     expect(errorId).toBeTruthy();expect(document.getElementById(errorId!)!.textContent!.length).toBeGreaterThan(0);
   }
-  await fill('-1','1e2');await submit();expect(paths(mock)).toEqual(['/api/v1/dashboard']);
-});
-it('keeps B3 focus recovery deferred after an invalid explicit submission',async()=>{
-  const mock=vi.fn().mockResolvedValue(reply(dashboard()));await mount(mock);
-  calculate().focus();await submit();
-  expect(document.activeElement).toBe(calculate());
-  expect((screen.getByLabelText('BTC quantity') as HTMLInputElement).getAttribute('aria-invalid')).toBe('true');
-  expect((screen.getByLabelText('ETH quantity') as HTMLInputElement).getAttribute('aria-invalid')).toBe('true');
   expect(paths(mock)).toEqual(['/api/v1/dashboard']);
+});
+it.each([
+  ['-1','2','BTC quantity'],
+  ['0.1','1e2','ETH quantity'],
+] as const)('focuses the first invalid field for pointer submission of BTC=%s ETH=%s',async(BTC,ETH,label)=>{
+  const mock=vi.fn().mockResolvedValue(reply(dashboard()));await mount(mock);await fill(BTC,ETH);await submit();
+  expect(document.activeElement).toBe(screen.getByLabelText(label));
+  expect((screen.getByLabelText('BTC quantity') as HTMLInputElement).value).toBe(BTC);
+  expect((screen.getByLabelText('ETH quantity') as HTMLInputElement).value).toBe(ETH);
+  expect(paths(mock)).toEqual(['/api/v1/dashboard']);
+});
+it('focuses BTC after an invalid keyboard Enter submission',async()=>{
+  const mock=vi.fn().mockResolvedValue(reply(dashboard()));await mount(mock);await fill('-1','1e2');
+  calculate().focus();await userEvent.setup().keyboard('{Enter}');
+  expect(document.activeElement).toBe(screen.getByLabelText('BTC quantity'));
+  expect(paths(mock)).toEqual(['/api/v1/dashboard']);
+});
+it('does not move focus while correcting an error or during a rerender',async()=>{
+  const mock=vi.fn().mockResolvedValue(reply(dashboard()));const mounted=await mount(mock);await fill('0.1','1e2');await submit();
+  const ETH=screen.getByLabelText('ETH quantity') as HTMLInputElement;
+  expect(document.activeElement).toBe(ETH);
+  await act(async()=>{fireEvent.change(ETH,{target:{value:'2'}});});
+  expect(document.activeElement).toBe(ETH);expect(ETH.getAttribute('aria-invalid')).toBeNull();
+  mounted.rerender(<App/>);expect(document.activeElement).toBe(ETH);
+  expect(paths(mock)).toEqual(['/api/v1/dashboard']);
+});
+it('keeps a disabled unavailable submission inert without moving focus',async()=>{
+  const pending=deferred<Response>();const mock=vi.fn().mockReturnValue(pending.promise);await mount(mock);
+  const ETH=screen.getByLabelText('ETH quantity') as HTMLInputElement;ETH.focus();
+  expect(calculate().disabled).toBe(true);await submit();
+  expect(document.activeElement).toBe(ETH);expect(mock).toHaveBeenCalledTimes(1);
 });
 it('describes currently accepted market data without implying snapshot selection',async()=>{
   const mock=vi.fn().mockResolvedValueOnce(reply(observedDashboard())).mockResolvedValueOnce(reply(valuation()));
@@ -47,12 +72,12 @@ it('describes currently accepted market data without implying snapshot selection
 it('preserves typed text and requires exactly one explicit calculation with accepted snapshot',async()=>{
   const pending=deferred<Response>();const mock=vi.fn().mockResolvedValueOnce(reply(observedDashboard())).mockReturnValueOnce(pending.promise);
   await mount(mock);await fill('000.10000000','2');expect(paths(mock)).toEqual(['/api/v1/dashboard']);
-  (screen.getByLabelText('BTC quantity') as HTMLInputElement).focus();
+  const BTC=screen.getByLabelText('BTC quantity') as HTMLInputElement;BTC.focus();
   await act(async()=>{fireEvent.click(calculate());fireEvent.click(calculate());});
-  expect(paths(mock)).toEqual(['/api/v1/dashboard','/api/v1/valuation']);expect(calculate().disabled).toBe(true);
+  expect(paths(mock)).toEqual(['/api/v1/dashboard','/api/v1/valuation']);expect(calculate().disabled).toBe(true);expect(document.activeElement).toBe(BTC);
   expect(JSON.parse((mock.mock.calls[1]![1] as RequestInit).body as string)).toEqual({snapshot_id:'opaque-token-0',quantities:{BTC:'000.10000000',ETH:'2'}});
   await act(async()=>{pending.resolve(reply(valuation()));});
-  expect((screen.getByLabelText('BTC quantity') as HTMLInputElement).value).toBe('000.10000000');
+  expect(BTC.value).toBe('000.10000000');expect(document.activeElement).toBe(BTC);
   for(const exact of ['65000.12','6500.012','2500.00000001','5000.00000002','11500.01200002','56.52%','43.48%']) expect(text()).toContain(exact);
   expect(text()).toMatch(/estimate/i);expect(text()).toMatch(/synthetic/i);
 });

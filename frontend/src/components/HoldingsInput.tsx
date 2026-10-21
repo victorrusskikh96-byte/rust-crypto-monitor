@@ -1,13 +1,15 @@
+import type { Ref } from 'react';
 import type { Asset } from '../api/contracts';
 
 type HoldingsInputProps = {
   asset: Asset;
   value: string;
   error: string | undefined;
+  inputRef: Ref<HTMLInputElement>;
   onChange: (asset: Asset, value: string) => void;
 };
 
-export function HoldingsInput({ asset, value, error, onChange }: HoldingsInputProps) {
+export function HoldingsInput({ asset, value, error, inputRef, onChange }: HoldingsInputProps) {
   const inputId = `portfolio-${asset.toLowerCase()}`;
   return (
     <div className={`holding-input${error ? ' holding-input-invalid' : ''}`}>
@@ -15,6 +17,7 @@ export function HoldingsInput({ asset, value, error, onChange }: HoldingsInputPr
       <div className="holding-input-control">
         <span className="holding-asset-mark" aria-hidden="true">{asset === 'BTC' ? '₿' : 'Ξ'}</span>
         <input
+          ref={inputRef}
           id={inputId}
           name={asset}
           type="text"
